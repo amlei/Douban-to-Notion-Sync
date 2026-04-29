@@ -18,12 +18,14 @@ from src.core.auth.auth import decode_access_token
 from src.core.middleware import AuthMiddleware
 from src.core.auth.repository import AuthRepo
 from src.core.auth.routes import router as auth_router
+from src.core.utils.redis import close_redis
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     yield
+    await close_redis()
 
 
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)

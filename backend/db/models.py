@@ -45,17 +45,6 @@ class User(Base):
         }
 
 
-class VerificationCode(Base):
-    __tablename__ = "verification_codes"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    email: Mapped[str] = mapped_column(nullable=False, index=True)
-    code: Mapped[str] = mapped_column(nullable=False)
-    expires_at: Mapped[str] = mapped_column(nullable=False)
-    used: Mapped[bool] = mapped_column(default=False)
-    created_at: Mapped[str] = mapped_column(default=lambda: _now())
-
-
 class CommunityMeta(Base):
     __tablename__ = "community_meta"
     __table_args__ = (

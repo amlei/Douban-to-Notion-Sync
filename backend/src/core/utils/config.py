@@ -38,22 +38,40 @@ class SmtpConfig(BaseModel):
         }
 
 
+class RedisConfig(BaseModel):
+    host: str = "localhost"
+    port: int = 6379
+    db: int = 0
+    password: str = ""
+
+
 class Config(BaseModel):
     smtp: SmtpConfig = SmtpConfig()
+    redis: RedisConfig = RedisConfig()
+    jwt_secret: str = ""
 
 
 _config: Config | None = None
+
+CONFIG_PATH = Path(__file__).resolve().parent.parent.parent.parent / "config.yaml"
 
 
 def get_config() -> Config:
     global _config
     if _config is not None:
         return _config
-    path = Path(__file__).resolve().parent.parent.parent.parent / "config.yaml"
-    if path.exists():
-        with open(path) as f:
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH) as f:
             data = yaml.safe_load(f) or {}
         _config = Config(**data)
     else:
         _config = Config()
     return _config
+
+
+def save_config() -> None:
+    if _config is None:
+        return
+    data = _config.model_dump()
+    with open(CONFIG_PATH, "w") as f:
+        yaml.dump(data, f, default_flow_style=False, allow_unicode=True)

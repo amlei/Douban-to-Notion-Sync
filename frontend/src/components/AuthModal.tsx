@@ -1,6 +1,6 @@
 import { useState } from "react";
 import "./AuthModal.css";
-import { X, Loader2, Mail, Lock, KeyRound } from "lucide-react";
+import { X, Loader2, Mail, Lock, KeyRound, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { getPasswordStrength } from "../utils/password";
 import type { StrengthLevel } from "../utils/password";
@@ -19,6 +19,8 @@ export function AuthModal({ onClose }: AuthModalProps) {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
+  const [showLoginPw, setShowLoginPw] = useState(false);
+  const [showRegPw, setShowRegPw] = useState(false);
 
   const handleLogin = async () => {
     setAuthError(null);
@@ -85,13 +87,21 @@ export function AuthModal({ onClose }: AuthModalProps) {
               <div className="auth-input-wrap">
                 <Lock size={16} className="auth-input-icon" />
                 <input
-                  className="auth-input has-icon"
-                  type="password"
+                  className="auth-input has-icon has-toggle"
+                  type={showLoginPw ? "text" : "password"}
                   placeholder="密码"
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleLogin()}
                 />
+                <button
+                  type="button"
+                  className="auth-pw-toggle"
+                  onClick={() => setShowLoginPw(!showLoginPw)}
+                  tabIndex={-1}
+                >
+                  {showLoginPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
               <button className="auth-btn" onClick={handleLogin} disabled={authLoading}>
                 {authLoading ? <Loader2 size={16} className="spin" /> : "登录"}
@@ -140,12 +150,20 @@ export function AuthModal({ onClose }: AuthModalProps) {
               <div className="auth-input-wrap">
                 <Lock size={16} className="auth-input-icon" />
                 <input
-                  className="auth-input has-icon"
-                  type="password"
+                  className="auth-input has-icon has-toggle"
+                  type={showRegPw ? "text" : "password"}
                   placeholder="密码（至少 6 位）"
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
                 />
+                <button
+                  type="button"
+                  className="auth-pw-toggle"
+                  onClick={() => setShowRegPw(!showRegPw)}
+                  tabIndex={-1}
+                >
+                  {showRegPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
               {authPassword && <StrengthBar level={getPasswordStrength(authPassword)} />}
               <button

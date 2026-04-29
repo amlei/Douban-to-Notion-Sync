@@ -7,9 +7,20 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 import jwt
 
-_JWT_SECRET = secrets.token_hex(32)
+from src.core.utils.config import get_config, save_config
+
 _JWT_ALGORITHM = "HS256"
 _JWT_EXPIRE_MINUTES = 1440
+
+
+def _get_jwt_secret() -> str:
+    cfg = get_config()
+    if cfg.jwt_secret:
+        return cfg.jwt_secret
+    secret = secrets.token_hex(32)
+    cfg.jwt_secret = secret
+    save_config()
+    return secret
 
 
 def hash_password(plain: str) -> str:
@@ -38,11 +49,11 @@ def check_password_strength(password: str) -> list[str]:
 def create_access_token(user_id: str, user_pk: int) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=_JWT_EXPIRE_MINUTES)
     payload = {"sub": user_id, "pk": user_pk, "exp": expire}
-    return jwt.encode(payload, _JWT_SECRET, algorithm=_JWT_ALGORITHM)
+    return jwt.encode(payload, _get_jwt_secret(), algorithm=_JWT_ALGORITHM)
 
 
 def decode_access_token(token: str) -> dict:
-    return jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
+    return jwt.decode(token, _get_jwt_secret(), algorithms=[_JWT_ALGORITHM])
 
 
 def generate_user_id() -> str:

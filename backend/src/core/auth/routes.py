@@ -14,7 +14,7 @@ from src.core.auth.auth import (
 )
 from src.core.auth.deps import get_current_user
 from src.core.utils.email import send_verification_code
-from src.core.auth.repository import AuthRepo
+from src.core.auth.repository import AuthRepo, store_code, verify_code
 
 router = APIRouter()
 
@@ -57,7 +57,7 @@ async def auth_handler(
         if existing:
             raise HTTPException(status_code=409, detail="该邮箱已注册")
         code = generate_verification_code()
-        await AuthRepo.store_code(db, email, code)
+        await store_code(email, code)
         try:
             await send_verification_code(email, code)
         except Exception:
@@ -70,7 +70,7 @@ async def auth_handler(
         password = _get(req, "password")
         if len(password) < 6:
             raise HTTPException(status_code=422, detail="密码至少需要 6 个字符")
-        if not await AuthRepo.verify_code(db, email, code):
+        if not await verify_code(email, code):
             raise HTTPException(status_code=400, detail="验证码无效或已过期")
         new_user = await AuthRepo.create_user(db, email, password)
         token = create_access_token(new_user.user_id, new_user.id)

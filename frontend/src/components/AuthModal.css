@@ -32,6 +32,23 @@
   padding-left: 34px;
   width: 100%;
 }
+.auth-input.has-toggle {
+  padding-right: 34px;
+}
+.auth-pw-toggle {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  padding: 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+.auth-pw-toggle:hover {
+  color: var(--text);
+}
 .auth-btn {
   padding: 10px;
   border: none;

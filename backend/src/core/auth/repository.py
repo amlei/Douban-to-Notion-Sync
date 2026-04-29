@@ -5,8 +5,9 @@ from datetime import datetime, timezone
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import User, VerificationCode
+from db.models import User
 from src.core.auth.auth import generate_user_id, hash_password
+from src.core.utils.redis import get_redis
 
 
 class AuthRepo:
@@ -74,30 +75,17 @@ class AuthRepo:
         user.status = "deleted"
         await db.flush()
 
-    @staticmethod
-    async def store_code(db: AsyncSession, email: str, code: str) -> None:
-        expires = datetime.now(timezone.utc) + __import__("datetime").timedelta(minutes=10)
-        row = VerificationCode(email=email, code=code, expires_at=expires.isoformat())
-        db.add(row)
-        await db.flush()
 
-    @staticmethod
-    async def verify_code(db: AsyncSession, email: str, code: str) -> bool:
-        now = datetime.now(timezone.utc).isoformat()
-        stmt = (
-            select(VerificationCode)
-            .where(
-                VerificationCode.email == email,
-                VerificationCode.code == code,
-                VerificationCode.used == False,  # noqa: E712
-                VerificationCode.expires_at > now,
-            )
-            .order_by(VerificationCode.id.desc())
-            .limit(1)
-        )
-        row = (await db.execute(stmt)).scalar_one_or_none()
-        if row is None:
-            return False
-        row.used = True
-        await db.flush()
+async def store_code(email: str, code: str) -> None:
+    r = await get_redis()
+    await r.setex(f"vc:{email}", 600, code)
+
+
+async def verify_code(email: str, code: str) -> bool:
+    r = await get_redis()
+    key = f"vc:{email}"
+    stored = await r.get(key)
+    if stored == code:
+        await r.delete(key)
         return True
+    return False

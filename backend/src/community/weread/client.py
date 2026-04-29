@@ -5,6 +5,7 @@ from typing import Callable
 from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
 
 from .login import WeReadLogin
+from . import BASE_URL
 from .models.book import Book
 from .models.bookmark import Bookmark
 from .models.profile import Profile
@@ -12,8 +13,6 @@ from .scrapers.bookmarks import scrape_bookmarks
 from .scrapers.profile import scrape_profile as _scrape_profile
 from .scrapers.shelf import scrape_book_info, scrape_shelf
 from .session import SessionManager
-
-BASE_URL = "https://weread.qq.com/web/shelf"
 
 ProgressCallback = Callable[[str], None]
 QrCallback = Callable[[bytes], None]
@@ -113,16 +112,13 @@ class WeReadClient:
 
     def ensure_ready(self) -> None:
         """Ensure we have a valid session. Login via QR if needed."""
-        # Navigate to weread to activate cookies
         self._page.goto(BASE_URL)
         self._page.wait_for_load_state("networkidle")
 
-        # Check if session is valid by trying an API call
         if self._vid and self._check_auth():
             self._notify("logged_in")
             return
 
-        # Need to login
         self._run_login()
 
     def _check_auth(self) -> bool:
@@ -159,10 +155,6 @@ class WeReadClient:
         self._session.save_state(self._context)
         self._notify("logged_in")
 
-        # Navigate to shelf page for data operations
-        self._page.goto(BASE_URL)
-        self._page.wait_for_load_state("networkidle")
-
     def scrape_profile(self) -> Profile:
         """Fetch user profile."""
         if not self._vid:
@@ -179,6 +171,6 @@ class WeReadClient:
         """Fetch detail for a single book."""
         return scrape_book_info(self._page, book_id)
 
-    def scrape_bookmarks(self, book_id: str) -> list[Bookmark]:
-        """Fetch bookmarks/notes for a single book."""
-        return scrape_bookmarks(self._page, book_id)
+    def scrape_bookmarks(self, book_id: str, synckey: int = 0) -> tuple[list[Bookmark], int]:
+        """Fetch bookmarks/notes for a single book. Returns (bookmarks, new_synckey)."""
+        return scrape_bookmarks(self._page, book_id, synckey)

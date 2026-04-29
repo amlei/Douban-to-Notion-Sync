@@ -7,6 +7,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
 
+PLATFORM_DOUBAN = 1
+PLATFORM_WEREAD = 2
+
+
+class PlatformRow(Base):
+    __tablename__ = "platforms"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(unique=True, nullable=False)
+
 
 class User(Base):
     __tablename__ = "users"
@@ -49,13 +59,13 @@ class VerificationCode(Base):
 class CommunityMeta(Base):
     __tablename__ = "community_meta"
     __table_args__ = (
-        UniqueConstraint("user_id", "platform", name="uq_user_platform"),
-        Index("ix_community_meta_user_platform", "user_id", "platform"),
+        UniqueConstraint("user_id", "platform_id", name="uq_user_platform"),
+        Index("ix_community_meta_user_platform", "user_id", "platform_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    platform: Mapped[str]
+    platform_id: Mapped[int] = mapped_column(ForeignKey("platforms.id"), default=PLATFORM_DOUBAN)
     bound: Mapped[int] = mapped_column(default=0)
     community_user_id: Mapped[str | None]
     profile_json: Mapped[str | None]
@@ -68,7 +78,7 @@ class CommunityMeta(Base):
         profile = json.loads(self.profile_json) if self.profile_json else None
         return {
             "bound": bool(self.bound),
-            "platform": self.platform,
+            "platform_id": self.platform_id,
             "user_id": self.community_user_id,
             "profile": profile,
         }
@@ -77,15 +87,15 @@ class CommunityMeta(Base):
 class BookRow(Base):
     __tablename__ = "books"
     __table_args__ = (
-        UniqueConstraint("user_id", "url", "source", name="uq_books_user_url_source"),
+        UniqueConstraint("user_id", "url", "platform_id", name="uq_books_user_url_platform"),
         Index("ix_books_user_id", "user_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    source: Mapped[str] = mapped_column(default="douban")  # "douban" or "weread"
+    platform_id: Mapped[int] = mapped_column(ForeignKey("platforms.id"), default=PLATFORM_DOUBAN)
     title: Mapped[str]
-    url: Mapped[str]  # Douban URL or WeRead bookId
+    url: Mapped[str]
     cover: Mapped[str | None]
     author: Mapped[str | None]
     country: Mapped[str | None]
@@ -98,14 +108,7 @@ class BookRow(Base):
     status: Mapped[str | None]
     tags: Mapped[str | None]  # JSON array
     comment: Mapped[str | None]
-    # WeRead-specific fields (nullable for Douban rows)
-    isbn: Mapped[str | None]
-    category: Mapped[str | None]
-    intro: Mapped[str | None]
-    total_words: Mapped[int | None]
-    rating_detail: Mapped[str | None]  # e.g. "好评如潮"
-    finished: Mapped[int | None]  # 0/1
-    finish_reading: Mapped[int | None]  # 0/1
+    external: Mapped[str | None]  # JSON: platform-specific fields
     scraped_at: Mapped[str] = mapped_column(default=lambda: _now())
 
     def to_pydantic(self) -> "community_models.Book":
@@ -119,28 +122,29 @@ class BookRow(Base):
             tags=tags, comment=self.comment,
         )
 
+    def change_hash(self) -> str:
+        import hashlib
+        payload = f"{self.status or ''}|{self.rating}|{self.external or ''}"
+        return hashlib.md5(payload.encode()).hexdigest()
+
     def to_api_dict(self) -> dict:
         d = {
-            "source": self.source,
+            "platform_id": self.platform_id,
             "title": self.title, "url": self.url, "cover": self.cover,
             "author": self.author, "translator": self.translator,
             "publisher": self.publisher, "price": self.price,
-            "rating": self.rating,
+            "rating": self.rating, "status": self.status,
         }
-        if self.source == "weread":
-            d.update({
-                "book_id": self.url,
-                "isbn": self.isbn, "category": self.category,
-                "intro": self.intro, "total_words": self.total_words,
-                "rating_detail": self.rating_detail,
-                "finished": bool(self.finished) if self.finished is not None else None,
-                "finish_reading": bool(self.finish_reading) if self.finish_reading is not None else None,
-            })
+        ext = json.loads(self.external) if self.external else None
+        if self.platform_id == PLATFORM_WEREAD:
+            d["book_id"] = self.url
+            if ext:
+                d.update(ext)
         else:
             tags = json.loads(self.tags) if self.tags else None
             d.update({
                 "country": self.country, "pub_date": self.pub_date,
-                "read_date": self.read_date, "status": self.status,
+                "read_date": self.read_date,
                 "tags": tags, "comment": self.comment,
             })
         return d
@@ -269,13 +273,13 @@ class NoteRow(Base):
 class BookmarkRow(Base):
     __tablename__ = "bookmarks"
     __table_args__ = (
-        UniqueConstraint("user_id", "source", "book_id", "bookmark_id", name="uq_bookmarks_user_src_book_bm"),
+        UniqueConstraint("user_id", "platform_id", "book_id", "bookmark_id", name="uq_bookmarks_user_plat_book_bm"),
         Index("ix_bookmarks_user_id", "user_id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    source: Mapped[str] = mapped_column(default="weread")  # "weread", etc.
+    platform_id: Mapped[int] = mapped_column(ForeignKey("platforms.id"), default=PLATFORM_WEREAD)
     book_id: Mapped[str]
     book_title: Mapped[str | None]
     mark_text: Mapped[str]
@@ -288,7 +292,7 @@ class BookmarkRow(Base):
 
     def to_api_dict(self) -> dict:
         return {
-            "source": self.source,
+            "platform_id": self.platform_id,
             "book_id": self.book_id, "book_title": self.book_title,
             "mark_text": self.mark_text, "chapter_name": self.chapter_name,
             "chapter_idx": self.chapter_idx, "style": self.style,

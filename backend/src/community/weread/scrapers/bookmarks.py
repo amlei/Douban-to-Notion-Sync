@@ -5,23 +5,27 @@ from playwright.sync_api import Page
 from ..models.bookmark import Bookmark
 
 
-def scrape_bookmarks(page: Page, book_id: str) -> list[Bookmark]:
-    """Fetch bookmarks/notes for a book via /web/book/bookmarklist API."""
+def scrape_bookmarks(
+    page: Page, book_id: str, synckey: int = 0
+) -> tuple[list[Bookmark], int]:
+    """Fetch bookmarks/notes for a book via /web/book/bookmarklist API.
+    Returns (bookmarks, new_synckey)."""
     data = page.evaluate(
-        """async (bookId) => {
-            const r = await fetch('/web/book/bookmarklist?bookId=' + bookId + '&synckey=0');
+        """async ([bookId, synckey]) => {
+            const r = await fetch('/web/book/bookmarklist?bookId=' + bookId + '&synckey=' + synckey);
             if (!r.ok) return null;
             return await r.json();
         }""",
-        book_id,
+        [book_id, synckey],
     )
 
     if not data:
-        return []
+        return [], synckey
 
+    new_synckey = data.get("synckey", synckey)
     updated = data.get("updated")
     if not isinstance(updated, list):
-        return []
+        return [], new_synckey
 
     bookmarks: list[Bookmark] = []
     for item in updated:
@@ -29,16 +33,7 @@ def scrape_bookmarks(page: Page, book_id: str) -> list[Bookmark]:
         if bm:
             bookmarks.append(bm)
 
-    return bookmarks
-
-
-def scrape_all_bookmarks(page: Page, book_ids: list[str]) -> list[Bookmark]:
-    """Fetch bookmarks for multiple books."""
-    all_bookmarks: list[Bookmark] = []
-    for book_id in book_ids:
-        bms = scrape_bookmarks(page, book_id)
-        all_bookmarks.extend(bms)
-    return all_bookmarks
+    return bookmarks, new_synckey
 
 
 def _parse_bookmark(item: dict) -> Bookmark | None:

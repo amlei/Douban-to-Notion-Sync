@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from playwright.sync_api import BrowserContext, FrameLocator, Locator, Page
 
-BASE_URL = "https://weread.qq.com"
+from . import BASE_URL
 
 
 class WeReadLogin:

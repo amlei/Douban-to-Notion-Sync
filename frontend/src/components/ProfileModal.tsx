@@ -99,7 +99,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [wereadBooks, setWereadBooks] = useState<BookItem[]>([]);
   const [wereadBookmarks, setWereadBookmarks] = useState<BookmarkItem[]>([]);
-  const [dataTab, setDataTab] = useState<"books" | "movies" | "notes" | "weread_books" | "bookmarks">("books");
+  const [dataTab, setDataTab] = useState<"books" | "movies" | "notes" | "bookmarks">("books");
   const wsRef = useRef<WebSocket | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -854,65 +854,85 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
                 ) : (
                   <>
                     <div className="data-tabs">
+                      {(doubanBound || wereadBound) && (
+                        <button
+                          className={`data-tab ${dataTab === "books" ? "active" : ""}`}
+                          onClick={() => setDataTab("books")}
+                        >
+                          图书 ({books.length + wereadBooks.length})
+                        </button>
+                      )}
                       {doubanBound && (
                         <>
-                          <button
-                            className={`data-tab ${dataTab === "books" ? "active" : ""}`}
-                            onClick={() => setDataTab("books")}
-                          >
-                            豆瓣图书 ({books.length})
-                          </button>
                           <button
                             className={`data-tab ${dataTab === "movies" ? "active" : ""}`}
                             onClick={() => setDataTab("movies")}
                           >
-                            豆瓣电影 ({movies.length})
+                            电影 ({movies.length})
                           </button>
                           <button
                             className={`data-tab ${dataTab === "notes" ? "active" : ""}`}
                             onClick={() => setDataTab("notes")}
                           >
-                            豆瓣日记 ({notes.length})
+                            日记 ({notes.length})
                           </button>
                         </>
                       )}
                       {wereadBound && (
-                        <>
-                          <button
-                            className={`data-tab ${dataTab === "weread_books" ? "active" : ""}`}
-                            onClick={() => setDataTab("weread_books")}
-                          >
-                            微信读书 ({wereadBooks.length})
-                          </button>
-                          <button
-                            className={`data-tab ${dataTab === "bookmarks" ? "active" : ""}`}
-                            onClick={() => setDataTab("bookmarks")}
-                          >
-                            读书笔记 ({wereadBookmarks.length})
-                          </button>
-                        </>
+                        <button
+                          className={`data-tab ${dataTab === "bookmarks" ? "active" : ""}`}
+                          onClick={() => setDataTab("bookmarks")}
+                        >
+                          读书笔记 ({wereadBookmarks.length})
+                        </button>
                       )}
                     </div>
                     <div className="data-list">
-                      {dataTab === "books" && books.map((b) => (
-                        <a key={b.url} href={b.url} target="_blank" rel="noreferrer" className="data-item">
-                          {b.cover && <img src={b.cover} alt="" className="data-item-cover" />}
-                          <div className="data-item-info">
-                            <span className="data-item-title">{b.title}</span>
-                            <span className="data-item-meta">
-                              {b.author && `${b.author}`}
-                              {b.author && b.publisher && " / "}
-                              {b.publisher && `${b.publisher}`}
-                              {b.rating && ` / ${"★".repeat(b.rating)}`}
-                            </span>
-                            {b.tags && b.tags.length > 0 && (
-                              <div className="data-item-tags">
-                                {b.tags.map((t) => <span key={t} className="data-tag">{t}</span>)}
-                              </div>
-                            )}
-                          </div>
-                        </a>
-                      ))}
+                      {dataTab === "books" && [...books, ...wereadBooks].map((b) => {
+                        const isWeread = b.platform_id === 2;
+                        const bookKey = isWeread ? (b.book_id ?? b.url) : b.url;
+                        const href = isWeread ? undefined : b.url;
+                        const Wrapper = href ? "a" : "div";
+                        return (
+                          <Wrapper
+                            key={bookKey}
+                            {...(href ? { href, target: "_blank", rel: "noreferrer" } : {})}
+                            className="data-item"
+                          >
+                            {b.cover && <img src={b.cover} alt="" className="data-item-cover" />}
+                            <div className="data-item-info">
+                              <span className="data-item-title">
+                                {b.title}
+                                <img
+                                  src={isWeread ? "/weread.webp" : "/douban.svg"}
+                                  alt=""
+                                  style={{ height: 14, marginLeft: 6, verticalAlign: "middle", opacity: 0.7 }}
+                                />
+                              </span>
+                              <span className="data-item-meta">
+                                {b.author && `${b.author}`}
+                                {b.author && b.publisher && " / "}
+                                {b.publisher && `${b.publisher}`}
+                                {b.rating_detail && ` / ${b.rating_detail}`}
+                                {!isWeread && !b.rating_detail && b.rating && ` / ${"★".repeat(b.rating)}`}
+                              </span>
+                              {isWeread && (
+                                <span className="data-item-meta">
+                                  {b.total_words && `${(b.total_words / 10000).toFixed(1)}万字`}
+                                  {b.total_words && b.isbn && " / "}
+                                  {b.isbn && `ISBN ${b.isbn}`}
+                                  {b.status === "1" && " / 已读完"}
+                                </span>
+                              )}
+                              {!isWeread && b.tags && b.tags.length > 0 && (
+                                <div className="data-item-tags">
+                                  {b.tags.map((t) => <span key={t} className="data-tag">{t}</span>)}
+                                </div>
+                              )}
+                            </div>
+                          </Wrapper>
+                        );
+                      })}
                       {dataTab === "movies" && movies.map((m) => (
                         <a key={m.url} href={m.url} target="_blank" rel="noreferrer" className="data-item">
                           {m.cover && <img src={m.cover} alt="" className="data-item-cover" />}
@@ -953,27 +973,6 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
                           </div>
                         )
                       ))}
-                      {dataTab === "weread_books" && wereadBooks.map((b) => (
-                        <div key={b.book_id ?? b.url} className="data-item">
-                          {b.cover && <img src={b.cover} alt="" className="data-item-cover" />}
-                          <div className="data-item-info">
-                            <span className="data-item-title">{b.title}</span>
-                            <span className="data-item-meta">
-                              {b.author && `${b.author}`}
-                              {b.author && b.publisher && " / "}
-                              {b.publisher && `${b.publisher}`}
-                              {b.category && ` / ${b.category}`}
-                              {b.rating_detail && ` / ${b.rating_detail}`}
-                            </span>
-                            <span className="data-item-meta">
-                              {b.total_words && `${(b.total_words / 10000).toFixed(1)}万字`}
-                              {b.total_words && b.isbn && " / "}
-                              {b.isbn && `ISBN ${b.isbn}`}
-                              {b.finish_reading && " / 已读完"}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
                       {dataTab === "bookmarks" && wereadBookmarks.map((bm, i) => (
                         <div key={bm.bookmark_id ?? `${bm.book_id}-${i}`} className="data-item" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
@@ -989,7 +988,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
                           </span>
                         </div>
                       ))}
-                      {dataTab === "books" && books.length === 0 && (
+                      {dataTab === "books" && books.length === 0 && wereadBooks.length === 0 && (
                         <p className="settings-desc">暂无图书数据，点击"同步数据"开始导入。</p>
                       )}
                       {dataTab === "movies" && movies.length === 0 && (
@@ -997,9 +996,6 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
                       )}
                       {dataTab === "notes" && notes.length === 0 && (
                         <p className="settings-desc">暂无日记数据，点击"同步数据"开始导入。</p>
-                      )}
-                      {dataTab === "weread_books" && wereadBooks.length === 0 && (
-                        <p className="settings-desc">暂无图书数据，点击"同步数据"开始导入。</p>
                       )}
                       {dataTab === "bookmarks" && wereadBookmarks.length === 0 && (
                         <p className="settings-desc">暂无笔记数据，点击"同步数据"开始导入。</p>

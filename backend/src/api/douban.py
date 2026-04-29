@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.community.douban.client import DoubanClient
 from src.community.douban.models.profile import Profile
 from src.community.douban.session import SessionManager
+from db.models import PLATFORM_DOUBAN
 from db.repository import CommunityMetaRepo, DataRepo
 from db.engine import async_session_factory
 
@@ -72,20 +73,20 @@ class AsyncBindManager:
                 if task.status == "failed":
                     result["error"] = task.error
                 return result
-        row = await CommunityMetaRepo.get_binding(self._db, self._user_id, "douban")
+        row = await CommunityMetaRepo.get_binding(self._db, self._user_id, PLATFORM_DOUBAN)
         if row is not None and row.bound:
             return {"status": "bound", **row.to_api_dict()}
         return {"status": "idle"}
 
     async def refresh(self) -> dict:
-        row = await CommunityMetaRepo.get_binding(self._db, self._user_id, "douban")
+        row = await CommunityMetaRepo.get_binding(self._db, self._user_id, PLATFORM_DOUBAN)
         if row is None or not row.bound:
             return {"error": "Not bound"}
         if not row.community_user_id:
             return {"error": "No user_id in meta"}
         try:
             state_json, _ = await CommunityMetaRepo.get_session_state(
-                self._db, self._user_id, "douban"
+                self._db, self._user_id, PLATFORM_DOUBAN
             )
             mgr = SessionManager(state_json=state_json)
             http = mgr.build_http_session()
@@ -96,7 +97,7 @@ class AsyncBindManager:
         except Exception as e:
             return {"error": str(e)}
         await CommunityMetaRepo.save_binding(
-            self._db, self._user_id, "douban", row.community_user_id, profile
+            self._db, self._user_id, PLATFORM_DOUBAN, row.community_user_id, profile
         )
         await self._db.commit()
         return {
@@ -107,7 +108,7 @@ class AsyncBindManager:
         }
 
     async def unbind(self) -> dict:
-        await CommunityMetaRepo.delete_binding(self._db, self._user_id, "douban")
+        await CommunityMetaRepo.delete_binding(self._db, self._user_id, PLATFORM_DOUBAN)
         await self._db.commit()
         self._tasks.clear()
         return {"bound": False}
@@ -204,7 +205,7 @@ async def _save_binding(
     expires_at: str | None,
 ) -> None:
     row = await CommunityMetaRepo.save_binding(
-        db, user_id, "douban", community_user_id, profile
+        db, user_id, PLATFORM_DOUBAN, community_user_id, profile
     )
     if state_json:
         row.session_state_json = state_json
@@ -220,7 +221,7 @@ def _run_sync(
 ) -> None:
     async def _do_scrape() -> None:
         async with async_session_factory() as db:
-            state_json, _ = await CommunityMetaRepo.get_session_state(db, user_id, "douban")
+            state_json, _ = await CommunityMetaRepo.get_session_state(db, user_id, PLATFORM_DOUBAN)
             if not state_json:
                 return
             mgr = SessionManager(state_json=state_json)
@@ -236,9 +237,9 @@ def _run_sync(
                 task._notify()
                 try:
                     books = BooksScraper(http, community_user_id).scrape(max_pages=0, existing_urls=existing_books)
-                    await DataRepo.upsert_books(db, user_id, books)
+                    result = await DataRepo.upsert_books(db, user_id, books)
                     await db.commit()
-                    task.scrape_counts["books"] = len(books)
+                    task.scrape_counts["books"] = result["updated"]
                     task._notify()
                 except Exception:
                     pass

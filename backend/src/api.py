@@ -10,6 +10,7 @@ from db import get_session, init_db
 from db.engine import async_session_factory
 from db.models import User
 from db.repository import CommunityMetaRepo, DataRepo, BookmarkRepo
+from db.models import PLATFORM_DOUBAN, PLATFORM_WEREAD
 from src.api.douban import AsyncBindManager as DoubanBindManager
 from src.api.douban import supported_platforms
 from src.api.weread import WereadBindManager
@@ -82,6 +83,8 @@ async def chat(request: Request):
 
 PLATFORMS = supported_platforms()
 
+_PLATFORM_NAME_TO_ID = {"douban": PLATFORM_DOUBAN, "weread": PLATFORM_WEREAD}
+
 
 def _get_manager(platform: str, db: AsyncSession, user_id: int):
     if platform == "weread":
@@ -122,7 +125,8 @@ async def community_sync(
     if platform not in PLATFORMS:
         return {"error": f"Unsupported platform: {platform}"}
     user = _user(request)
-    row = await CommunityMetaRepo.get_binding(db, user.id, platform)
+    platform_id = _PLATFORM_NAME_TO_ID.get(platform, 0)
+    row = await CommunityMetaRepo.get_binding(db, user.id, platform_id)
     if row is None or not row.bound or not row.community_user_id:
         return {"error": "Not bound"}
     mgr = _get_manager(platform, db, user.id)
@@ -199,11 +203,12 @@ async def community_data(
 
     if platform == "weread":
         all_books = await DataRepo.get_books(db, user.id)
-        books = [row.to_api_dict() for row in all_books if row.source == "weread"]
+        books = [row.to_api_dict() for row in all_books if row.platform_id == PLATFORM_WEREAD]
         bookmarks = [row.to_api_dict() for row in await BookmarkRepo.get_bookmarks(db, user.id)]
         return {"books": books, "bookmarks": bookmarks}
 
-    books = [row.to_api_dict() for row in await DataRepo.get_books(db, user.id)]
+    all_books = await DataRepo.get_books(db, user.id)
+    books = [row.to_api_dict() for row in all_books if row.platform_id == PLATFORM_DOUBAN]
     movies = [row.to_api_dict() for row in await DataRepo.get_movies(db, user.id)]
     notes = [row.to_api_dict() for row in await DataRepo.get_notes(db, user.id)]
     return {"books": books, "movies": movies, "notes": notes}

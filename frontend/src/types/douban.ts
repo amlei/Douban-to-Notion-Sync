@@ -25,7 +25,7 @@ export interface PollResult {
 }
 
 export interface BookItem {
-  source?: string;
+  platform_id?: number;
   title: string;
   url: string;
   cover: string | null;
@@ -47,8 +47,7 @@ export interface BookItem {
   intro?: string | null;
   total_words?: number | null;
   rating_detail?: string | null;
-  finished?: boolean | null;
-  finish_reading?: boolean | null;
+  finished?: number | null;
 }
 
 export interface MovieItem {
@@ -71,7 +70,7 @@ export interface NoteItem {
 }
 
 export interface BookmarkItem {
-  source?: string;
+  platform_id?: number;
   book_id: string;
   book_title: string | null;
   mark_text: string;

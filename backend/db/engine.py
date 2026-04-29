@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from .base import Base
@@ -39,3 +39,10 @@ async def init_db() -> None:
     _DB_DIR.mkdir(parents=True, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Seed platforms table
+        await conn.execute(
+            text(
+                "INSERT OR IGNORE INTO platforms (id, name) VALUES "
+                "(1, 'douban'), (2, 'weread')"
+            )
+        )

@@ -137,7 +137,9 @@ async def community_sync(
 
 
 @app.websocket("/api/community/ws")
-async def community_ws(ws: WebSocket, platform: str = Query(...), token: str = Query(...)):
+async def community_ws(ws: WebSocket, platform: str = Query(...)):
+    subprotocols: list[str] = ws.scope.get("subprotocols", [])
+    token = subprotocols[0] if subprotocols else ""
     try:
         payload = decode_access_token(token)
         user_pk = payload["pk"]

@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import "./AuthModal.css";
+import "./modal-base.css";
+import "./PasswordModal.css";
 import { X, Loader2, Mail, Lock, KeyRound, Eye, EyeOff } from "lucide-react";
-import { useAuth } from "../contexts/AuthContext";
-import { getPasswordStrength } from "../utils/password";
-import type { StrengthLevel } from "../utils/password";
+import { useAuth } from "../../contexts/AuthContext";
+import { getPasswordStrength } from "../../utils/password";
+import type { StrengthLevel } from "../../utils/password";
+import { STRENGTH_COLORS, STRENGTH_LABELS } from "./constants";
 
 interface AuthModalProps {
   onClose: () => void;
@@ -19,8 +22,14 @@ export function AuthModal({ onClose }: AuthModalProps) {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [showLoginPw, setShowLoginPw] = useState(false);
   const [showRegPw, setShowRegPw] = useState(false);
+
+  useEffect(() => {
+    return () => { if (cooldownRef.current) clearInterval(cooldownRef.current); };
+  }, []);
 
   const handleLogin = async () => {
     setAuthError(null);
@@ -39,6 +48,14 @@ export function AuthModal({ onClose }: AuthModalProps) {
     try {
       await register(authEmail);
       setCodeSent(true);
+      setCooldown(60);
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
+      cooldownRef.current = setInterval(() => {
+        setCooldown((c) => {
+          if (c <= 1) { clearInterval(cooldownRef.current!); return 0; }
+          return c - 1;
+        });
+      }, 1000);
     } catch (e: any) {
       setAuthError(e.message);
     }
@@ -106,7 +123,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
               <button className="auth-btn" onClick={handleLogin} disabled={authLoading}>
                 {authLoading ? <Loader2 size={16} className="spin" /> : "登录"}
               </button>
-              <p className="auth-link" onClick={() => { setAuthView("register"); setAuthError(null); setCodeSent(false); }}>
+              <p className="auth-link" onClick={() => { setAuthView("register"); setAuthError(null); setCodeSent(false); if (cooldownRef.current) clearInterval(cooldownRef.current); setCooldown(0); }}>
                 没有账号？注册
               </p>
             </>
@@ -121,8 +138,12 @@ export function AuthModal({ onClose }: AuthModalProps) {
                   type="email"
                   placeholder="邮箱"
                   value={authEmail}
-                  onChange={(e) => { setAuthEmail(e.target.value); setCodeSent(false); }}
-                  disabled={codeSent}
+                  onChange={(e) => {
+                    setAuthEmail(e.target.value);
+                    if (cooldownRef.current) clearInterval(cooldownRef.current);
+                    setCooldown(0);
+                    setCodeSent(false);
+                  }}
                 />
               </div>
               {codeSent && <p className="auth-hint">验证码已发送至 {authEmail}</p>}
@@ -142,9 +163,9 @@ export function AuthModal({ onClose }: AuthModalProps) {
                 <button
                   className="auth-btn auth-code-btn"
                   onClick={handleSendCode}
-                  disabled={authLoading || !authEmail}
+                  disabled={authLoading || !authEmail || cooldown > 0}
                 >
-                  {codeSent ? "重新发送" : "发送验证码"}
+                  {cooldown > 0 ? `${cooldown}s` : codeSent ? "重新发送" : "发送验证码"}
                 </button>
               </div>
               <div className="auth-input-wrap">
@@ -173,7 +194,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
               >
                 {authLoading ? <Loader2 size={16} className="spin" /> : "创建账号"}
               </button>
-              <p className="auth-link" onClick={() => { setAuthView("login"); setAuthError(null); setCodeSent(false); }}>
+              <p className="auth-link" onClick={() => { setAuthView("login"); setAuthError(null); setCodeSent(false); if (cooldownRef.current) clearInterval(cooldownRef.current); setCooldown(0); }}>
                 已有账号？登录
               </p>
             </>
@@ -183,20 +204,6 @@ export function AuthModal({ onClose }: AuthModalProps) {
     </div>
   );
 }
-
-const STRENGTH_COLORS: Record<StrengthLevel, [string, string, string]> = {
-  0: ["var(--border)", "var(--border)", "var(--border)"],
-  1: ["#ef4444", "var(--border)", "var(--border)"],
-  2: ["#f59e0b", "#f59e0b", "var(--border)"],
-  3: ["#22c55e", "#22c55e", "#22c55e"],
-};
-
-const STRENGTH_LABELS: Record<StrengthLevel, string> = {
-  0: "",
-  1: "弱",
-  2: "中",
-  3: "强",
-};
 
 function StrengthBar({ level }: { level: StrengthLevel }) {
   const colors = STRENGTH_COLORS[level];

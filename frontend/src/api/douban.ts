@@ -54,7 +54,7 @@ export interface BindWsCallbacks {
 export function connectBindWs(platform: string, cb: BindWsCallbacks): WebSocket {
   const token = localStorage.getItem("auth_token") ?? "";
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const ws = new WebSocket(`${proto}//${location.host}/api/community/ws?platform=${platform}&token=${token}`);
+  const ws = new WebSocket(`${proto}//${location.host}/api/community/ws?platform=${platform}`, token);
 
   ws.onmessage = (e) => {
     const data: PollResult = JSON.parse(e.data);

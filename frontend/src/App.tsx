@@ -5,7 +5,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { Sidebar } from "./components/Sidebar";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { ChatPanel } from "./components/ChatPanel";
-import { ProfileModal } from "./components/ProfileModal";
+import { ProfileModal } from "./components/profile";
 import "./App.css";
 
 function AppInner() {

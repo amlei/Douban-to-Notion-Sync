@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LifeInk AI -- a personal data aggregator that scrapes book/movie data from Douban (and eventually WeRead, Flomo) and provides an AI chat interface. The project has two main subsystems: a legacy `requests`-based Notion syncer at the root, and a newer backend + frontend stack in `backend/` and `frontend/`.
+LifeInk AI -- a personal data aggregator that scrapes book/movie data from Douban and WeRead (Flomo is a stub) and provides an AI chat interface. The project has two main subsystems: a legacy `requests`-based Notion syncer at the root, and a newer backend + frontend stack in `backend/` and `frontend/`.
 
 ## Development Commands
 
@@ -59,33 +59,35 @@ Independent `uv`-managed project (Python >=3.12). Four layers:
 **API layer** (`src/api.py`, `src/api/douban.py`):
 - FastAPI app with `AuthMiddleware` + CORS. Started via `uvicorn` on port 8000.
 - `POST /api/chat` -- streaming text response (mock LLM, character-by-character).
-- `POST /api/community/bind` -- platform bind/unbind/status/refresh (query params: `action`, `platform`). Requires auth.
-- `POST /api/community/sync` -- trigger data sync for a bound platform. Requires auth.
-- `WS /api/community/ws?token=...` -- WebSocket push of binding/sync progress. Auth via query param.
-- `GET /api/community/data` -- retrieve books, movies, notes for a platform. Requires auth.
-- `AsyncBindManager` (in `src/api/douban.py`) runs Playwright login in a thread pool, notifying the WebSocket via `asyncio.Event`.
+- `POST /api/community/bind?action=...&platform=...` -- platform bind/unbind/status/refresh. Requires auth.
+- `POST /api/community/sync?platform=...` -- trigger data sync for a bound platform. Requires auth.
+- `WS /api/community/ws?token=...&platform=...` -- WebSocket push of binding/sync progress. Auth via query param.
+- `GET /api/community/data?platform=...` -- retrieve books, movies, notes, or bookmarks for a platform. Requires auth.
+- Each platform has its own `BindManager` subclass (e.g. `AsyncBindManager` for Douban in `src/api/douban.py`, `WereadBindManager` in `src/api/weread.py`). They run Playwright login in a thread pool, notifying the WebSocket via `asyncio.Event`.
 
 **Auth layer** (`src/core/`):
-- JWT (HS256, 24h expiry) with bcrypt password hashing.
+- JWT (HS256, 24h expiry, secret auto-generated or set in `config.yaml`) with bcrypt password hashing.
 - `AuthMiddleware` (`src/core/middleware.py`): validates Bearer token on all routes except whitelist (`/api/auth/*`, `/api/chat`, `/docs`). Injects `User` into `request.state.user`.
-- `AuthRepo` (`src/core/auth/repository.py`): user CRUD, verification code storage (6-digit, 10min expiry), soft delete.
+- `AuthRepo` (`src/core/auth/repository.py`): user CRUD, soft delete.
+- Verification codes: 6-digit, 10min expiry, stored in **Redis** (`src/core/utils/redis.py`), not the database.
 - Auth routes (`src/core/auth/routes.py`): register -> email verification code -> verify+create account -> login returns JWT. Also `/me`, `/change-password`, `/delete`.
 - Email via `src/core/utils/email.py` using SMTP config from `config.yaml` (presets for qq, outlook, 163, 126, yeah).
-- `src/core/utils/config.py`: loads `config.yaml` (Pydantic model with `SmtpConfig`).
+- `src/core/utils/config.py`: loads `config.yaml` (Pydantic model with `SmtpConfig`, `RedisConfig`, `jwt_secret`).
 
 **Scraper layer** (`src/community/`):
-- `DoubanClient` (`src/community/douban/client.py`): context manager that uses Playwright for login (QR code) and `requests` for data scraping. Auto-detects `user_id` from `/mine/` redirect.
-- `SessionManager` (`src/community/douban/session.py`): builds `requests.Session` from saved Playwright storage state cookies.
-- `BaseScraper` (`src/community/douban/scrapers/base.py`): pagination base class. Subclasses implement `_url()` and `_parse_page()`.
-- Each data type has a Pydantic model (`src/community/douban/models/`) and a scraper (`src/community/douban/scrapers/`): Book, Movie, Game, Review, Note, Profile.
-- `weread/` and `flomo/` packages are stubs.
+- Platform identifiers are integer constants: `PLATFORM_DOUBAN=1`, `PLATFORM_WEREAD=2` (defined in `db/models.py`).
+- **Douban** (`douban/`): `DoubanClient` uses Playwright for QR login + `requests.Session` for data scraping. Auto-detects `user_id` from `/mine/` redirect. `SessionManager` builds session from saved Playwright cookies.
+- **WeRead** (`weread/`): `WereadClient` uses full browser automation (`page.evaluate` + `fetch`) for API calls. Scrapers for shelf, bookmarks, and profile. Session restored from Playwright storage state.
+- **Flomo** (`flomo/`): stub only.
+- `BaseScraper` (`douban/scrapers/base.py`): pagination base class. Subclasses implement `_url()` and `_parse_page()`.
+- Each data type has a Pydantic model and scraper: Book, Movie, Game, Review, Note, Profile (Douban); Book, Bookmark, Profile (WeRead).
 - Default browser channel is `msedge`.
 
 **Database layer** (`db/`):
 - SQLAlchemy async ORM over SQLite (`aiosqlite`). DB file: `backend/db/data/lifeink.db`.
 - `engine.py`: async engine, session factory, `init_db()`.
-- `models.py`: ORM models -- `User` (email, password_hash, name, avatar, bio, status, email_verified), `VerificationCode`, `CommunityMeta` (platform binding + session state), `BookRow`, `MovieRow`, `GameRow`, `ReviewRow`, `NoteRow`. Row models have `to_api_dict()` and `to_pydantic()` methods.
-- `repository.py`: `CommunityMetaRepo` (binding/session CRUD), `DataRepo` (upsert + get for each data type, using SQLite `ON CONFLICT DO UPDATE`), `AuthRepo` (user + verification code CRUD).
+- `models.py`: ORM models -- `User` (email, password_hash, name, avatar, bio, status, email_verified), `CommunityMeta` (platform binding + session state), `BookRow` (shared by Douban and WeRead, with `platform_id` and `external` JSON field), `MovieRow`, `GameRow`, `ReviewRow`, `NoteRow`, `BookmarkRow` (WeRead). Row models have `to_api_dict()` and `to_pydantic()` methods. `change_hash()` on row models avoids unnecessary updates.
+- `repository.py`: `CommunityMetaRepo` (binding/session CRUD), `DataRepo` (upsert + get for each data type, using SQLite `ON CONFLICT DO UPDATE`), `BookmarkRepo` (WeRead bookmarks), `AuthRepo` (user CRUD).
 - All `user_id` foreign keys reference `users.id` with `CASCADE` delete.
 
 ### Frontend (`frontend/`)
@@ -94,7 +96,8 @@ Bun-managed React 19 + TypeScript + Vite.
 
 - `App.tsx` wraps everything in `AuthProvider`. Renders `Sidebar`, `ChatPanel`/`WelcomeScreen`, and a right panel placeholder. `ProfileModal` for settings.
 - `AuthContext` (`contexts/AuthContext.tsx`): global auth state with JWT token storage in localStorage, auto-logout on 401, `authedFetch()` wrapper.
-- `AuthModal` (`components/AuthModal.tsx`): login + registration with email verification code flow and password strength indicator.
+- `AuthModal` (`components/profile/AuthModal.tsx`): login + registration with email verification code flow and password strength indicator.
+- `ProfileModal` (`components/profile/ProfileModal.tsx`): tabbed modal with `AccountTab`, `DataTab`, and platform binding via `usePlatformBinding` hook.
 - `useChatStore` hook manages chat state (messages, history, active chat) with in-memory `Map` cache.
 - `ChatPanel` uses `@ai-sdk/react`'s `useChat` hook with `TextStreamChatTransport` for streaming.
 - `api/auth.ts` provides auth API calls; `api/douban.ts` provides REST and WebSocket functions for platform binding and data access.
@@ -120,16 +123,15 @@ Bun-managed React 19 + TypeScript + Vite.
 - Strictly prohibited from using emojis in code or comments.
 - All files created for temporary use shall be placed in the `tmp/` directory.
 - Creating .sh and other script files is prohibited.
+- Frontend modal components must not use horizontal divider lines (e.g. `border-top`, `border-bottom`, `<hr>`) for visual separation. Use spacing, background color, or other non-line styling instead.
 
 ## API Design Convention
 
-All API endpoints use a **unified single-endpoint pattern**: one URL per domain, with an `action` field in the request body to distinguish operations. No separate URL paths per action.
+All API endpoints use a **unified single-endpoint pattern**: one URL per domain, distinguished by action.
 
-**Pattern:**
-```
-POST /api/{domain}
-Body: { "action": "<action-name>", ...params }
-```
+**Patterns:**
+- Auth routes: `action` field in POST body (e.g. `POST /api/auth` with `{"action": "login", ...}`)
+- Community routes: `action` and `platform` as query params (e.g. `POST /api/community/bind?action=start&platform=douban`)
 
 ## Required Configuration
 
@@ -143,10 +145,12 @@ Body: { "action": "<action-name>", ...params }
 - `BOOK_ICON`, `VIDEO_ICON` -- icon URLs for Notion pages
 - `STAR` -- character used to display ratings
 
-`backend/config.yaml` (gitignored, for auth email):
+`backend/config.yaml` (gitignored, for auth + Redis):
 
 - `smtp.provider` -- preset name (`qq`, `outlook`, `163`, `126`, `yeah`, `custom`)
 - `smtp.username`, `smtp.password` -- SMTP credentials
+- `redis.host`, `redis.port`, `redis.db`, `redis.password` -- Redis config (defaults to localhost:6379)
+- `jwt_secret` -- JWT signing key (auto-generated if empty)
 
 ## CI/CD
 

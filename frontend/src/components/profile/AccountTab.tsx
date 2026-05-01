@@ -6,7 +6,7 @@ import { platforms } from "./constants";
 import { PlatformCard } from "./PlatformCard";
 import { PasswordModal } from "./PasswordModal";
 import type { PlatformBindingState } from "./usePlatformBinding";
-import type { BookItem, MovieItem } from "../../types/community";
+import type { BookItem, MovieItem, NoteItem, BookmarkItem, MemoItem } from "../../types/community";
 
 interface AccountTabProps {
   user: { name: string; email: string; avatar: string | null; bio: string | null };
@@ -15,6 +15,9 @@ interface AccountTabProps {
   books: BookItem[];
   wereadBooks: BookItem[];
   movies: MovieItem[];
+  notes: NoteItem[];
+  wereadBookmarks: BookmarkItem[];
+  flomoMemos: MemoItem[];
   doubanBinding: PlatformBindingState;
   wereadBinding: PlatformBindingState;
   flomoBinding: PlatformBindingState;
@@ -26,7 +29,7 @@ interface AccountTabProps {
 
 export function AccountTab({
   user, refreshUser, logout,
-  books, wereadBooks, movies,
+  books, wereadBooks, movies, notes, wereadBookmarks, flomoMemos,
   doubanBinding, wereadBinding, flomoBinding,
   qrSrc, bindError,
   activePlatform, onPlatformChange,
@@ -220,6 +223,7 @@ export function AccountTab({
               iconRounded={false}
               label="豆瓣"
               binding={doubanBinding}
+              dataCounts={{ "本图书": books.length, "部电影": movies.length, "篇日记": notes.length }}
             />
           )}
           {activePlatform === "weread" && (
@@ -229,6 +233,7 @@ export function AccountTab({
               iconRounded={true}
               label="微信读书"
               binding={wereadBinding}
+              dataCounts={{ "本图书": wereadBooks.length, "条笔记": wereadBookmarks.length }}
             />
           )}
           {activePlatform === "flomo" && (
@@ -238,6 +243,7 @@ export function AccountTab({
               iconRounded={false}
               label="flomo"
               binding={flomoBinding}
+              dataCounts={{ "条备忘录": flomoMemos.length }}
             />
           )}
           {activePlatform !== "douban" && activePlatform !== "weread" && activePlatform !== "flomo" &&

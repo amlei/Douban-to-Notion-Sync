@@ -22,8 +22,8 @@ LifeInk AI 从豆瓣、微信读书、Flomo 等平台采集个人的阅读、影
 
 - [x] 豆瓣 - 图书、影视、游戏、书评、日记、个人资料（Playwright）
 - [x] 豆瓣 - 图书、影视同步至 Notion（requests）
-- [ ] 微信读书（weread）
-- [ ] Flomo
+- [x] 微信读书 - 书架、标注、个人资料（Playwright 浏览器自动化）
+- [x] Flomo - 日记导出与同步（Playwright 浏览器自动化）
 
 ### 数据同步
 
@@ -31,13 +31,13 @@ LifeInk AI 从豆瓣、微信读书、Flomo 等平台采集个人的阅读、影
 - [x] 自动登录检测（session 过期弹二维码）
 - [x] 翻页数据提取、图标/封面/评分
 - [x] 本地 SQLite 数据库存储（SQLAlchemy async）
-- [x] 绑定后自动抓取图书和影视数据
+- [x] 绑定后自动抓取数据
 
-### AI 对话
+### AI Agent
 
 - [x] 前端聊天界面（React + Vite）
 - [x] 流式响应（StreamingResponse + AI SDK）
-- [ ] 接入 LLM 提供商
+- [ ] 开发 AI Agent
 
 ---
 
@@ -53,15 +53,18 @@ icon/                # 页面图标
 
 backend/             # API 服务 + 数据抓取（uv 独立项目）
   src/api.py         # FastAPI 应用（路由、WebSocket）
-  src/api/douban.py  # 豆瓣平台绑定逻辑（AsyncBindManager）
+  src/api/           # 平台绑定管理器
+    douban.py        # 豆瓣 AsyncBindManager
+    weread.py        # 微信读书 WereadBindManager
+    flomo.py         # Flomo FlomoBindManager
   src/core/          # 认证与基础设施
     auth/            # JWT 认证（注册/登录/验证码/密码重置）
     middleware.py    # AuthMiddleware（全局 JWT 校验）
-    utils/           # 配置加载、邮件发送
+    utils/           # 配置加载、邮件发送、Redis
   src/community/     # 社区数据源
     douban/          # 豆瓣（Playwright 登录 + requests 抓取）
-    weread/          # 微信读书（待开发）
-    flomo/           # Flomo（待开发）
+    weread/          # 微信读书（Playwright 浏览器自动化）
+    flomo/           # Flomo（Playwright 浏览器自动化 + HTML 导出解析）
   db/                # SQLAlchemy 异步数据库层（SQLite）
   tests/             # pytest 测试
 
@@ -117,8 +120,8 @@ python main.py
 - [x] 豆瓣全量数据抓取
 - [x] 本地数据持久化
 - [x] 用户注册与登录系统
-- [ ] 微信读书数据接入
-- [ ] Flomo 数据接入
+- [x] 微信读书数据接入
+- [x] Flomo 数据接入
 
 ### Phase 2 - AI Agent
 

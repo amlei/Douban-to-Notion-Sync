@@ -149,6 +149,9 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
                 books={books}
                 wereadBooks={wereadBooks}
                 movies={movies}
+                notes={notes}
+                wereadBookmarks={wereadBookmarks}
+                flomoMemos={flomoMemos}
                 doubanBinding={doubanBinding}
                 wereadBinding={wereadBinding}
                 flomoBinding={flomoBinding}

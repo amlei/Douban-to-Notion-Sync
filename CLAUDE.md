@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LifeInk AI -- a personal data aggregator that scrapes book/movie data from Douban and WeRead (Flomo is a stub) and provides an AI chat interface. The project has two main subsystems: a legacy `requests`-based Notion syncer at the root, and a newer backend + frontend stack in `backend/` and `frontend/`.
+LifeInk AI -- a personal data aggregator that scrapes book/movie/memo data from Douban, WeRead, and Flomo, and provides an AI chat interface. The project has two main subsystems: a legacy `requests`-based Notion syncer at the root, and a newer backend + frontend stack in `backend/` and `frontend/`.
 
 ## Development Commands
 
@@ -17,7 +17,9 @@ uv run python -m playwright install chromium   # first time only
 uv run python __main__.py --type books --pages 3   # CLI scraper
 uv run python __main__.py --type browser           # open interactive browser with saved session
 uv run python src/api.py                           # start API server (port 8000)
-uv run pytest tests/ -v -s                         # run tests
+uv run pytest tests/ -v -s                         # run all tests
+uv run pytest tests/test_weread_client.py -v -s    # run a single test file
+uv run pytest tests/test_weread_client.py::test_name -v -s  # run a single test
 ```
 
 Valid `--type` values: `profile`, `books`, `movies`, `games`, `reviews`, `notes`, `browser`.
@@ -56,14 +58,14 @@ No test suite or linter for the root project.
 
 Independent `uv`-managed project (Python >=3.12). Four layers:
 
-**API layer** (`src/api.py`, `src/api/douban.py`):
+**API layer** (`src/api.py`, `src/api/`):
 - FastAPI app with `AuthMiddleware` + CORS. Started via `uvicorn` on port 8000.
 - `POST /api/chat` -- streaming text response (mock LLM, character-by-character).
 - `POST /api/community/bind?action=...&platform=...` -- platform bind/unbind/status/refresh. Requires auth.
 - `POST /api/community/sync?platform=...` -- trigger data sync for a bound platform. Requires auth.
 - `WS /api/community/ws?token=...&platform=...` -- WebSocket push of binding/sync progress. Auth via query param.
-- `GET /api/community/data?platform=...` -- retrieve books, movies, notes, or bookmarks for a platform. Requires auth.
-- Each platform has its own `BindManager` subclass (e.g. `AsyncBindManager` for Douban in `src/api/douban.py`, `WereadBindManager` in `src/api/weread.py`). They run Playwright login in a thread pool, notifying the WebSocket via `asyncio.Event`.
+- `GET /api/community/data?platform=...` -- retrieve books, movies, notes, bookmarks, or memos for a platform. Requires auth.
+- Each platform has its own `BindManager` subclass in `src/api/`: `AsyncBindManager` for Douban (`douban.py`), `WereadBindManager` (`weread.py`), `FlomoBindManager` (`flomo.py`). They run Playwright login in a thread pool, notifying the WebSocket via `asyncio.Event`.
 
 **Auth layer** (`src/core/`):
 - JWT (HS256, 24h expiry, secret auto-generated or set in `config.yaml`) with bcrypt password hashing.
@@ -75,19 +77,19 @@ Independent `uv`-managed project (Python >=3.12). Four layers:
 - `src/core/utils/config.py`: loads `config.yaml` (Pydantic model with `SmtpConfig`, `RedisConfig`, `jwt_secret`).
 
 **Scraper layer** (`src/community/`):
-- Platform identifiers are integer constants: `PLATFORM_DOUBAN=1`, `PLATFORM_WEREAD=2` (defined in `db/models.py`).
+- Platform identifiers are integer constants: `PLATFORM_DOUBAN=1`, `PLATFORM_WEREAD=2`, `PLATFORM_FLOMO=3` (defined in `db/models.py`).
 - **Douban** (`douban/`): `DoubanClient` uses Playwright for QR login + `requests.Session` for data scraping. Auto-detects `user_id` from `/mine/` redirect. `SessionManager` builds session from saved Playwright cookies.
 - **WeRead** (`weread/`): `WereadClient` uses full browser automation (`page.evaluate` + `fetch`) for API calls. Scrapers for shelf, bookmarks, and profile. Session restored from Playwright storage state.
-- **Flomo** (`flomo/`): stub only.
+- **Flomo** (`flomo/`): `FlomoClient` uses browser automation to export notes/memos via Flomo's HTML export, parsed by `parser.py`. `SessionManager` restores from Playwright storage state.
 - `BaseScraper` (`douban/scrapers/base.py`): pagination base class. Subclasses implement `_url()` and `_parse_page()`.
-- Each data type has a Pydantic model and scraper: Book, Movie, Game, Review, Note, Profile (Douban); Book, Bookmark, Profile (WeRead).
+- Each data type has a Pydantic model and scraper: Book, Movie, Game, Review, Note, Profile (Douban); Book, Bookmark, Profile (WeRead); FlomoMemo (Flomo).
 - Default browser channel is `msedge`.
 
 **Database layer** (`db/`):
 - SQLAlchemy async ORM over SQLite (`aiosqlite`). DB file: `backend/db/data/lifeink.db`.
 - `engine.py`: async engine, session factory, `init_db()`.
-- `models.py`: ORM models -- `User` (email, password_hash, name, avatar, bio, status, email_verified), `CommunityMeta` (platform binding + session state), `BookRow` (shared by Douban and WeRead, with `platform_id` and `external` JSON field), `MovieRow`, `GameRow`, `ReviewRow`, `NoteRow`, `BookmarkRow` (WeRead). Row models have `to_api_dict()` and `to_pydantic()` methods. `change_hash()` on row models avoids unnecessary updates.
-- `repository.py`: `CommunityMetaRepo` (binding/session CRUD), `DataRepo` (upsert + get for each data type, using SQLite `ON CONFLICT DO UPDATE`), `BookmarkRepo` (WeRead bookmarks), `AuthRepo` (user CRUD).
+- `models.py`: ORM models -- `PlatformRow` (platform enumeration), `User` (email, password_hash, name, avatar, bio, status, email_verified), `CommunityMeta` (platform binding + session state), `BookRow` (shared by Douban and WeRead, with `platform_id` and `external` JSON field), `MovieRow`, `GameRow`, `ReviewRow`, `NoteRow`, `BookmarkRow` (WeRead), `FlomoMemoRow` (Flomo, stores HTML content, tags, files). Row models have `to_api_dict()` and `to_pydantic()` methods. `change_hash()` on row models avoids unnecessary updates.
+- `repository.py`: `CommunityMetaRepo` (binding/session CRUD), `DataRepo` (upsert + get for each data type, using SQLite `ON CONFLICT DO UPDATE`; includes `upsert_flomo_memos`), `BookmarkRepo` (WeRead bookmarks), `AuthRepo` (user CRUD).
 - All `user_id` foreign keys reference `users.id` with `CASCADE` delete.
 
 ### Frontend (`frontend/`)
@@ -100,8 +102,8 @@ Bun-managed React 19 + TypeScript + Vite.
 - `ProfileModal` (`components/profile/ProfileModal.tsx`): tabbed modal with `AccountTab`, `DataTab`, and platform binding via `usePlatformBinding` hook.
 - `useChatStore` hook manages chat state (messages, history, active chat) with in-memory `Map` cache.
 - `ChatPanel` uses `@ai-sdk/react`'s `useChat` hook with `TextStreamChatTransport` for streaming.
-- `api/auth.ts` provides auth API calls; `api/douban.ts` provides REST and WebSocket functions for platform binding and data access.
-- `types/douban.ts` defines shared types: `BindStatus`, `PollResult`, `BookItem`, `MovieItem`, `NoteItem`, `CommunityData`.
+- `api/auth.ts` provides auth API calls; `api/douban.ts` provides platform-agnostic REST and WebSocket functions for platform binding and data access (despite the filename, it handles all platforms).
+- `types/community.ts` defines shared types: `BindStatus`, `PollResult`, `BookItem`, `MovieItem`, `NoteItem`, `BookmarkItem`, `MemoItem`, `CommunityData`.
 - Vite dev server proxies `/api` (including WebSocket) to `http://localhost:8000`.
 - UI is in Chinese.
 
@@ -155,4 +157,4 @@ All API endpoints use a **unified single-endpoint pattern**: one URL per domain,
 ## CI/CD
 
 - `.github/workflows/pages.yml` -- deploys a GitHub Pages site
-- `.github/workflows/auto-merge.yml` -- auto-merge for dependabot PRs
+- `.github/workflows/auto-merge.yml` -- auto-merge with squash for repository owner PRs, after Python syntax checks on both root and backend modules

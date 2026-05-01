@@ -7,12 +7,13 @@ interface PlatformCardProps {
   iconRounded: boolean;
   label: string;
   binding: PlatformBindingState;
+  dataCounts?: Record<string, number>;
 }
 
-export function PlatformCard({ platform, icon, iconRounded, label, binding }: PlatformCardProps) {
+export function PlatformCard({ platform, icon, iconRounded, label, binding, dataCounts }: PlatformCardProps) {
   const {
     bound, profile, binding: isBinding, bindPhase,
-    refreshing, syncing, syncPhase, scrapePhase, scrapeCounts,
+    refreshing, syncing, syncPhase, scrapePhase,
     menuOpen, menuRef,
     handleBind, handleUnbind, handleRefresh, handleSync, setMenuOpen,
   } = binding;
@@ -25,19 +26,6 @@ export function PlatformCard({ platform, icon, iconRounded, label, binding }: Pl
     ? { books: "正在导入图书...", movies: "正在导入影视..." }
     : { books: "正在导入图书...", bookmarks: "正在导入笔记..." };
 
-  const statusText = () => {
-    if (platform === "douban") {
-      if (scrapeCounts.books != null && scrapeCounts.movies != null) {
-        return <> - 已导入 {scrapeCounts.books} 本图书, {scrapeCounts.movies} 部电影</>;
-      }
-    } else {
-      if (scrapeCounts.books != null && scrapeCounts.bookmarks != null) {
-        return <> - 已导入 {scrapeCounts.books} 本图书, {scrapeCounts.bookmarks} 条笔记</>;
-      }
-    }
-    return null;
-  };
-
   return (
     <div className="platform-binding-card">
       <div className="platform-binding-row">
@@ -45,12 +33,6 @@ export function PlatformCard({ platform, icon, iconRounded, label, binding }: Pl
           <img src={icon} alt={label} className={`platform-icon ${iconRounded ? "rounded" : ""}`} />
           <div className="platform-detail">
             <span className="platform-name">{label}</span>
-            {bound && profile && (
-              <span className="platform-status">
-                已绑定 ({profile.name ?? profile.user_id})
-                {statusText()}
-              </span>
-            )}
           </div>
         </div>
         {bound ? (
@@ -142,6 +124,16 @@ export function PlatformCard({ platform, icon, iconRounded, label, binding }: Pl
               <div className="profile-field" style={{ gridColumn: "1 / -1" }}>
                 <label>简介</label>
                 <span>{profile.bio}</span>
+              </div>
+            )}
+            {dataCounts && Object.keys(dataCounts).length > 0 && (
+              <div className="profile-field" style={{ gridColumn: "1 / -1" }}>
+                <label>已导入数据</label>
+                <div className="data-count-tags">
+                  {Object.entries(dataCounts).map(([key, count]) => (
+                    <span key={key} className="data-count-tag">{count} {key}</span>
+                  ))}
+                </div>
               </div>
             )}
           </div>

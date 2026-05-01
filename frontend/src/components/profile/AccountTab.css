@@ -312,6 +312,23 @@
   min-width: 0;
 }
 
+.data-count-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.data-count-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--sky-100);
+  color: var(--sky-700);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
 .qr-overlay {
   display: flex;
   justify-content: center;

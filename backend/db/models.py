@@ -291,8 +291,8 @@ class BookmarkRow(Base):
 
 
 def _now() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat()
+    from datetime import datetime, timezone, timedelta
+    return datetime.now(timezone(timedelta(hours=8))).isoformat()
 
 
 class FlomoMemoRow(Base):

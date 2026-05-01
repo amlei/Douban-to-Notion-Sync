@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +38,7 @@ class AuthRepo:
             deleted.name = name
             deleted.status = "active"
             deleted.email_verified = True
-            deleted.updated_at = datetime.now(timezone.utc).isoformat()
+            deleted.updated_at = datetime.now(timezone(timedelta(hours=8))).isoformat()
             await db.flush()
             return deleted
         user = User(

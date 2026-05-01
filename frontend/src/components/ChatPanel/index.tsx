@@ -2,9 +2,28 @@ import { useState, useRef, useEffect } from "react";
 import "./ChatPanel.css";
 import { useChat } from "@ai-sdk/react";
 import { TextStreamChatTransport } from "ai";
+import type { UIMessage } from "ai";
 import { Send } from "lucide-react";
-import type { ChatStore } from "../hooks/useChatStore";
-import { MessageBubble } from "./MessageBubble";
+import type { ChatStore } from "../../hooks/useChatStore";
+
+function MessageBubble({ message }: { message: UIMessage }) {
+  const isUser = message.role === "user";
+
+  return (
+    <div className={`message message-${isUser ? "user" : "ai"}`}>
+      <div className="message-content">
+        {message.parts.map((part, i) => {
+          if (part.type === "text") {
+            return part.text.split("\n").map((line, j) => (
+              <p key={`${i}-${j}`}>{line}</p>
+            ));
+          }
+          return null;
+        })}
+      </div>
+    </div>
+  );
+}
 
 const transport = new TextStreamChatTransport({
   api: "/api/chat",

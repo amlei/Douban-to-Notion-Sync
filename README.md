@@ -69,8 +69,12 @@ backend/             # API 服务 + 数据抓取（uv 独立项目）
   tests/             # pytest 测试
 
 frontend/            # React 聊天界面（Bun + Vite）
-  src/api/           # API 集成（auth.ts, douban.ts）
-  src/components/    # UI 组件（AuthModal, Sidebar, ChatPanel, ProfileModal 等）
+  src/api/           # API 集成（auth.ts, community.ts）
+  src/components/    # 通用 UI 组件（ChatPanel, Sidebar, WelcomeScreen, PanelModal）
+  src/features/      # 功能模块
+    auth/            # 登录/注册（LoginModal）
+    settings/        # 设置面板（SettingsModal, panels/, components/, hooks/）
+    modals.tsx       # 全局模态框状态（GlobalModalsProvider）
   src/contexts/      # React Context（AuthContext）
   src/hooks/         # 自定义 Hook（useChatStore）
   src/types/         # TypeScript 类型定义

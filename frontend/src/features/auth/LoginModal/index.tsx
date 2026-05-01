@@ -1,18 +1,43 @@
 import { useState, useEffect, useRef } from "react";
-import "./AuthModal.css";
-import "./modal-base.css";
-import "./PasswordModal.css";
+import "../../../components/PanelModal/modal-base.css";
+import "../shared.css";
+import "./LoginModal.css";
 import { X, Loader2, Mail, Lock, KeyRound, Eye, EyeOff } from "lucide-react";
-import { useAuth } from "../../contexts/AuthContext";
-import { getPasswordStrength } from "../../utils/password";
-import type { StrengthLevel } from "../../utils/password";
-import { STRENGTH_COLORS, STRENGTH_LABELS } from "./constants";
+import { useAuth } from "../../../contexts/AuthContext";
+import { getPasswordStrength } from "../../../utils/password";
+import type { StrengthLevel } from "../../../utils/password";
 
-interface AuthModalProps {
-  onClose: () => void;
+export const STRENGTH_COLORS: Record<StrengthLevel, [string, string, string]> = {
+  0: ["var(--border)", "var(--border)", "var(--border)"],
+  1: ["#ef4444", "var(--border)", "var(--border)"],
+  2: ["#f59e0b", "#f59e0b", "var(--border)"],
+  3: ["#22c55e", "#22c55e", "#22c55e"],
+};
+
+export const STRENGTH_LABELS: Record<StrengthLevel, string> = {
+  0: "",
+  1: "弱",
+  2: "中",
+  3: "强",
+};
+import { useGlobalModals } from "../../modals";
+
+function StrengthBar({ level }: { level: StrengthLevel }) {
+  const colors = STRENGTH_COLORS[level];
+  return (
+    <div className="pw-strength">
+      <div className="pw-strength-bars">
+        {colors.map((color, i) => (
+          <div key={i} className="pw-strength-seg" style={{ backgroundColor: color }} />
+        ))}
+      </div>
+      {level > 0 && <span className="pw-strength-label">{STRENGTH_LABELS[level]}</span>}
+    </div>
+  );
 }
 
-export function AuthModal({ onClose }: AuthModalProps) {
+export function LoginModal() {
+  const { closeLogin } = useGlobalModals();
   const { login, register, verifyAndCreate } = useAuth();
 
   const [authView, setAuthView] = useState<"login" | "register">("login");
@@ -78,11 +103,11 @@ export function AuthModal({ onClose }: AuthModalProps) {
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal auth-modal">
+    <div className="modal-overlay" onClick={closeLogin}>
+      <div className="modal auth-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{authView === "login" ? "登录" : "注册"}</h2>
-          <button className="modal-close" onClick={onClose}>
+          <button className="modal-close" onClick={closeLogin}>
             <X size={22} />
           </button>
         </div>
@@ -201,20 +226,6 @@ export function AuthModal({ onClose }: AuthModalProps) {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function StrengthBar({ level }: { level: StrengthLevel }) {
-  const colors = STRENGTH_COLORS[level];
-  return (
-    <div className="pw-strength">
-      <div className="pw-strength-bars">
-        {colors.map((color, i) => (
-          <div key={i} className="pw-strength-seg" style={{ backgroundColor: color }} />
-        ))}
-      </div>
-      {level > 0 && <span className="pw-strength-label">{STRENGTH_LABELS[level]}</span>}
     </div>
   );
 }

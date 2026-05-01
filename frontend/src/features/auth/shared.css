@@ -1,10 +1,4 @@
-.auth-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px;
-  min-width: 320px;
-}
+/* Shared auth form styles */
 .auth-input {
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -99,4 +93,11 @@
 .auth-code-btn {
   flex-shrink: 0;
   white-space: nowrap;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px;
+  min-width: 320px;
 }

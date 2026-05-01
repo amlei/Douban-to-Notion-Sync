@@ -5,11 +5,10 @@ import base64
 import json
 import logging
 import uuid
-from dataclasses import dataclass, field
-from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.base import BindTask
 from src.community.flomo.client import FlomoClient
 from src.community.flomo.models import Profile as FlomoProfile
 from src.community.flomo.session import SessionManager
@@ -20,37 +19,10 @@ from db.models import PLATFORM_FLOMO
 log = logging.getLogger("flomo")
 
 
-@dataclass
-class FlomoBindTask:
-    task_id: str
-    platform: str = "flomo"
-    status: Literal["pending", "scanned", "logged_in", "fetching_profile", "scraping", "bound", "failed"] = "pending"
-    qr_base64: str | None = None
-    user_id: str | None = None
-    profile: dict | None = None
-    error: str | None = None
-    scrape_phase: str | None = None
-    scrape_counts: dict = field(default_factory=dict)
-    event: asyncio.Event = field(default_factory=asyncio.Event)
-    _loop: asyncio.AbstractEventLoop | None = field(default=None, repr=False)
-
-    def bind_loop(self) -> None:
-        self._loop = asyncio.get_running_loop()
-
-    def _notify(self) -> None:
-        if self._loop is None:
-            return
-        self._loop.call_soon_threadsafe(self._set_and_clear)
-
-    def _set_and_clear(self) -> None:
-        self.event.set()
-        self.event.clear()
-
-
 class FlomoBindManager:
     """Manages Flomo platform binding lifecycle."""
 
-    _tasks_by_user: dict[int, dict[str, FlomoBindTask]] = {}
+    _tasks_by_user: dict[int, dict[str, BindTask]] = {}
 
     def __init__(self, db: AsyncSession, user_id: int) -> None:
         self._db = db
@@ -113,10 +85,10 @@ class FlomoBindManager:
         self._tasks.clear()
         return {"bound": False}
 
-    def start_sync(self, community_user_id: str) -> FlomoBindTask:
+    def start_sync(self, community_user_id: str) -> BindTask:
         self._tasks.clear()
         task_id = uuid.uuid4().hex[:12]
-        task = FlomoBindTask(task_id=task_id, status="scraping")
+        task = BindTask(task_id=task_id, status="scraping")
         task.bind_loop()
         self._tasks[task_id] = task
 
@@ -137,10 +109,10 @@ class FlomoBindManager:
         task._notify()
         return task
 
-    def start_bind(self, channel: str = "msedge") -> FlomoBindTask:
+    def start_bind(self, channel: str = "msedge") -> BindTask:
         self._tasks.clear()
         task_id = uuid.uuid4().hex[:12]
-        task = FlomoBindTask(task_id=task_id)
+        task = BindTask(task_id=task_id)
         task.bind_loop()
         self._tasks[task_id] = task
 
@@ -245,7 +217,7 @@ def _extract_user_id(session: SessionManager) -> str | None:
 
 
 def _run_sync(
-    task: FlomoBindTask,
+    task: BindTask,
     loop: asyncio.AbstractEventLoop,
     user_id: int,
     community_user_id: str,

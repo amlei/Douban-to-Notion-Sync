@@ -1,5 +1,5 @@
 import { Loader2, RefreshCw, ChevronDown } from "lucide-react";
-import type { PlatformBindingState } from "./usePlatformBinding";
+import type { PlatformBindingState } from "../../hooks/usePlatformBinding";
 
 interface PlatformCardProps {
   platform: string;

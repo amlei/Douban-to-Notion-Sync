@@ -1,39 +1,45 @@
 import { useState, useEffect, useRef } from "react";
-import "./AccountTab.css";
+import "./AccountManage.css";
+import "../../../auth/shared.css";
+import "../../../auth/LoginModal/LoginModal.css";
 import { X, User, Pencil, Check, Loader2 } from "lucide-react";
-import { updateProfile } from "../../api/auth";
-import { platforms } from "./constants";
-import { PlatformCard } from "./PlatformCard";
-import { PasswordModal } from "./PasswordModal";
-import type { PlatformBindingState } from "./usePlatformBinding";
-import type { BookItem, MovieItem, NoteItem, BookmarkItem, MemoItem } from "../../types/community";
+import { useAuth } from "../../../../contexts/AuthContext";
+import { updateProfile, changePassword } from "../../../../api/auth";
+import { getPasswordStrength } from "../../../../utils/password";
+import type { StrengthLevel } from "../../../../utils/password";
+import { STRENGTH_COLORS, STRENGTH_LABELS } from "../../../auth/LoginModal";
+import { PlatformCard } from "../../components/PlatformCard";
+import { useCommunityData } from "../../hooks/useCommunityData";
 
-interface AccountTabProps {
-  user: { name: string; email: string; avatar: string | null; bio: string | null };
-  refreshUser: () => Promise<void>;
-  logout: () => void;
-  books: BookItem[];
-  wereadBooks: BookItem[];
-  movies: MovieItem[];
-  notes: NoteItem[];
-  wereadBookmarks: BookmarkItem[];
-  flomoMemos: MemoItem[];
-  doubanBinding: PlatformBindingState;
-  wereadBinding: PlatformBindingState;
-  flomoBinding: PlatformBindingState;
-  qrSrc: string | null;
-  bindError: string | null;
-  activePlatform: string;
-  onPlatformChange: (id: string) => void;
+const platforms = [
+  { id: "douban", label: "豆瓣", icon: "/douban.svg", rounded: false },
+  { id: "flomo", label: "flomo", icon: "/flomoapp.svg", rounded: false },
+  { id: "weread", label: "微信读书", icon: "/weread.webp", rounded: true },
+] as const;
+
+function StrengthBar({ level }: { level: StrengthLevel }) {
+  const colors = STRENGTH_COLORS[level];
+  return (
+    <div className="pw-strength">
+      <div className="pw-strength-bars">
+        {colors.map((color, i) => (
+          <div key={i} className="pw-strength-seg" style={{ backgroundColor: color }} />
+        ))}
+      </div>
+      {level > 0 && <span className="pw-strength-label">{STRENGTH_LABELS[level]}</span>}
+    </div>
+  );
 }
 
-export function AccountTab({
-  user, refreshUser, logout,
-  books, wereadBooks, movies, notes, wereadBookmarks, flomoMemos,
-  doubanBinding, wereadBinding, flomoBinding,
-  qrSrc, bindError,
-  activePlatform, onPlatformChange,
-}: AccountTabProps) {
+export function AccountManage() {
+  const { user, refreshUser, logout } = useAuth();
+  const {
+    books, wereadBooks, movies, notes, wereadBookmarks, flomoMemos,
+    qrSrc, bindError, activePlatform,
+    doubanBinding, wereadBinding, flomoBinding,
+    setActivePlatform,
+  } = useCommunityData();
+
   const [editingProfile, setEditingProfile] = useState(false);
   const [editName, setEditName] = useState("");
   const [editBio, setEditBio] = useState("");
@@ -44,9 +50,19 @@ export function AccountTab({
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
+  // Password modal state
+  const [pwOld, setPwOld] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSaving, setPwSaving] = useState(false);
+
+  if (!user) return null;
+
+  const currentUser = user;
+
   const startEditProfile = () => {
-    setEditName(user.name);
-    setEditBio(user.bio ?? "");
+    setEditName(currentUser.name);
+    setEditBio(currentUser.bio ?? "");
     setEditAvatar(null);
     setProfileError(null);
     setEditingProfile(true);
@@ -87,7 +103,24 @@ export function AccountTab({
     setProfileSaving(false);
   };
 
-  // Close account menu on outside click
+  const handleChangePassword = async () => {
+    setPwError(null);
+    if (!pwNew || pwNew.length < 6) {
+      setPwError("新密码至少需要 6 个字符");
+      return;
+    }
+    setPwSaving(true);
+    try {
+      await changePassword(pwOld, pwNew);
+      setShowPwModal(false);
+      setPwOld("");
+      setPwNew("");
+    } catch (e: any) {
+      setPwError(e.message);
+    }
+    setPwSaving(false);
+  };
+
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (accountMenuRef.current && !accountMenuRef.current.contains(e.target as Node)) {
@@ -99,7 +132,7 @@ export function AccountTab({
   }, [accountMenuOpen]);
 
   return (
-    <div className="settings-page">
+    <div className="panel-modal-page">
       <h3 className="settings-title-row">
         帐号管理
         <span className="settings-title-actions">
@@ -134,8 +167,8 @@ export function AccountTab({
       <div className="settings-profile">
         <label className="profile-avatar-lg avatar-editable" title="更换头像">
           <input type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: "none" }} />
-          {editAvatar || user.avatar ? (
-            <img src={editAvatar || user.avatar!} alt="" className="profile-detail-avatar" />
+          {editAvatar || currentUser.avatar ? (
+            <img src={editAvatar || currentUser.avatar!} alt="" className="profile-detail-avatar" />
           ) : (
             <User size={40} />
           )}
@@ -164,7 +197,7 @@ export function AccountTab({
             </div>
             <div className="profile-field">
               <label>邮箱</label>
-              <span>{user.email}</span>
+              <span>{currentUser.email}</span>
             </div>
             <div className="profile-field">
               <strong>{books.length + wereadBooks.length}</strong>
@@ -176,15 +209,15 @@ export function AccountTab({
           <div className="profile-grid">
             <div className="profile-field">
               <label>用户名</label>
-              <span>{user.name}</span>
+              <span>{currentUser.name}</span>
             </div>
             <div className="profile-field">
               <label>个人简介</label>
-              <span style={user.bio ? undefined : { color: "var(--text-muted)" }}>{user.bio || "一句话介绍自己"}</span>
+              <span style={currentUser.bio ? undefined : { color: "var(--text-muted)" }}>{currentUser.bio || "一句话介绍自己"}</span>
             </div>
             <div className="profile-field">
               <label>邮箱</label>
-              <span>{user.email}</span>
+              <span>{currentUser.email}</span>
             </div>
             <div className="profile-field">
               <strong>{books.length + wereadBooks.length}</strong>
@@ -204,7 +237,7 @@ export function AccountTab({
             <button
               key={p.id}
               className={`platform-tab ${activePlatform === p.id ? "active" : ""}`}
-              onClick={() => onPlatformChange(p.id)}
+              onClick={() => setActivePlatform(p.id)}
             >
               <img
                 src={p.icon}
@@ -283,7 +316,49 @@ export function AccountTab({
           退出登录
         </button>
       </div>
-      {showPwModal && <PasswordModal onClose={() => setShowPwModal(false)} />}
+      {showPwModal && (
+        <div className="pw-modal-overlay" onClick={() => setShowPwModal(false)}>
+          <div className="pw-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="pw-modal-header">
+              <h3>修改密码</h3>
+              <button className="modal-close" onClick={() => setShowPwModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="pw-modal-body">
+              <div className="profile-field-edit">
+                <label>当前密码</label>
+                <input
+                  className="auth-input"
+                  type="password"
+                  value={pwOld}
+                  onChange={(e) => setPwOld(e.target.value)}
+                />
+              </div>
+              <div className="profile-field-edit">
+                <label>新密码</label>
+                <input
+                  className="auth-input"
+                  type="password"
+                  placeholder="至少 6 位"
+                  value={pwNew}
+                  onChange={(e) => setPwNew(e.target.value)}
+                />
+                {pwNew && <StrengthBar level={getPasswordStrength(pwNew)} />}
+              </div>
+              {pwError && <p className="auth-error">{pwError}</p>}
+            </div>
+            <div className="pw-modal-footer">
+              <button className="auth-btn" onClick={handleChangePassword} disabled={pwSaving}>
+                {pwSaving ? <Loader2 size={14} className="spin" /> : "确认修改"}
+              </button>
+              <button className="platform-bind-btn" onClick={() => setShowPwModal(false)}>
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

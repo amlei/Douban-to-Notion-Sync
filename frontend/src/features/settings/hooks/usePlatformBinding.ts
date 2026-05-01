@@ -5,8 +5,8 @@ import {
   refreshProfile,
   syncData,
   connectBindWs,
-} from "../../api/douban";
-import type { PlatformProfile, PollResult, CommunityData, BindStatus } from "../../types/community";
+} from "../../../api/community";
+import type { PlatformProfile, PollResult, CommunityData, BindStatus } from "../../../types/community";
 
 const META_KEY = "community_meta";
 

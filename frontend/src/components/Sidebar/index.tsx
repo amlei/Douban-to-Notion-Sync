@@ -9,7 +9,8 @@ import {
   HelpCircle,
   LogOut,
 } from "lucide-react";
-import type { ChatMeta, UserProfile } from "../types";
+import type { ChatMeta, UserProfile } from "../../types";
+import { useGlobalModals } from "../../features/modals";
 
 interface SidebarProps {
   open: boolean;
@@ -19,7 +20,6 @@ interface SidebarProps {
   onToggle: () => void;
   onSelectChat: (id: string) => void;
   onNewChat: () => void;
-  onShowProfile: () => void;
   onLogout: () => void;
   onTransitionEnd?: () => void;
 }
@@ -34,7 +34,6 @@ export const Sidebar = forwardRef<HTMLElement, SidebarProps>(
       onToggle,
       onSelectChat,
       onNewChat,
-      onShowProfile,
       onLogout,
       onTransitionEnd,
     },
@@ -42,6 +41,7 @@ export const Sidebar = forwardRef<HTMLElement, SidebarProps>(
   ) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const footerRef = useRef<HTMLDivElement>(null);
+    const { openLogin, openSettings } = useGlobalModals();
 
     useEffect(() => {
       if (!menuOpen) return;
@@ -63,7 +63,7 @@ export const Sidebar = forwardRef<HTMLElement, SidebarProps>(
         label: "系统设置",
         action: () => {
           setMenuOpen(false);
-          onShowProfile();
+          openSettings("general");
         },
       },
       { icon: HelpCircle, label: "帮助与反馈", action: () => setMenuOpen(false) },
@@ -177,7 +177,7 @@ export const Sidebar = forwardRef<HTMLElement, SidebarProps>(
                 )}
               </>
             ) : (
-              <div className="user-info user-login" onClick={onShowProfile}>
+              <div className="user-info user-login" onClick={openLogin}>
                 <LogIn size={16} />
                 <span>登录</span>
               </div>

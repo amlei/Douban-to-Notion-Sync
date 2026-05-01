@@ -65,7 +65,8 @@ Independent `uv`-managed project (Python >=3.12). Four layers:
 - `POST /api/community/sync?platform=...` -- trigger data sync for a bound platform. Requires auth.
 - `WS /api/community/ws?token=...&platform=...` -- WebSocket push of binding/sync progress. Auth via query param.
 - `GET /api/community/data?platform=...` -- retrieve books, movies, notes, bookmarks, or memos for a platform. Requires auth.
-- Each platform has its own `BindManager` subclass in `src/api/`: `AsyncBindManager` for Douban (`douban.py`), `WereadBindManager` (`weread.py`), `FlomoBindManager` (`flomo.py`). They run Playwright login in a thread pool, notifying the WebSocket via `asyncio.Event`.
+- Shared binding infrastructure in `src/api/base.py`: `BindTask` dataclass with `asyncio.Event`-based notification, and `supported_platforms()` helper.
+- Each platform has its own `BindManager` subclass in `src/api/`: `AsyncBindManager` for Douban (`douban.py`), `WereadBindManager` (`weread.py`), `FlomoBindManager` (`flomo.py`). They run Playwright login in a thread pool, notifying the WebSocket via `BindTask`.
 
 **Auth layer** (`src/core/`):
 - JWT (HS256, 24h expiry, secret auto-generated or set in `config.yaml`) with bcrypt password hashing.
@@ -96,14 +97,18 @@ Independent `uv`-managed project (Python >=3.12). Four layers:
 
 Bun-managed React 19 + TypeScript + Vite.
 
-- `App.tsx` wraps everything in `AuthProvider`. Renders `Sidebar`, `ChatPanel`/`WelcomeScreen`, and a right panel placeholder. `ProfileModal` for settings.
+- `App.tsx` wraps everything in `AuthProvider` > `GlobalModalsProvider` > `AppInner`. Uses `react-router-dom` with routes defined in App. Renders `Sidebar`, `ChatPanel`/`WelcomeScreen`, and a right panel placeholder.
+- **Feature-based structure** under `features/` with `components/` and `panels/` for each feature module.
+- **Global modal system** (`features/modals.tsx`): `GlobalModalsProvider` + `useGlobalModals()` hook manages `loginVisible` and `settingsVisible` state. Components open/close modals via context instead of prop drilling.
+- `PanelModal` (`components/PanelModal/`): reusable modal with sidebar-tab and fullscreen panel modes. Accepts `PanelItem[]` config with `fullPanel?: boolean` flag.
+- `SettingsModal` (`features/settings/SettingsModal/`): 4 panels (general, account, data, terms). Data panel uses fullscreen mode.
+- `LoginModal` (`features/auth/LoginModal/`): login + registration with email verification code flow.
 - `AuthContext` (`contexts/AuthContext.tsx`): global auth state with JWT token storage in localStorage, auto-logout on 401, `authedFetch()` wrapper.
-- `AuthModal` (`components/profile/AuthModal.tsx`): login + registration with email verification code flow and password strength indicator.
-- `ProfileModal` (`components/profile/ProfileModal.tsx`): tabbed modal with `AccountTab`, `DataTab`, and platform binding via `usePlatformBinding` hook.
 - `useChatStore` hook manages chat state (messages, history, active chat) with in-memory `Map` cache.
-- `ChatPanel` uses `@ai-sdk/react`'s `useChat` hook with `TextStreamChatTransport` for streaming.
-- `api/auth.ts` provides auth API calls; `api/douban.ts` provides platform-agnostic REST and WebSocket functions for platform binding and data access (despite the filename, it handles all platforms).
+- `ChatPanel` (`components/ChatPanel/`) uses `@ai-sdk/react`'s `useChat` hook with `TextStreamChatTransport` for streaming. `MessageBubble` is inlined.
+- `api/auth.ts` provides auth API calls; `api/community.ts` provides platform-agnostic REST and WebSocket functions for platform binding and data access.
 - `types/community.ts` defines shared types: `BindStatus`, `PollResult`, `BookItem`, `MovieItem`, `NoteItem`, `BookmarkItem`, `MemoItem`, `CommunityData`.
+- Components follow a directory convention: each component lives in its own folder with `index.tsx` + co-located CSS (e.g. `components/Sidebar/index.tsx`).
 - Vite dev server proxies `/api` (including WebSocket) to `http://localhost:8000`.
 - UI is in Chinese.
 

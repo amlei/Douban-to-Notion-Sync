@@ -4,44 +4,16 @@ import asyncio
 import base64
 import json
 import uuid
-from dataclasses import dataclass, field
-from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.api.base import BindTask
 from src.community.douban.client import DoubanClient
 from src.community.douban.models.profile import Profile
 from src.community.douban.session import SessionManager
 from db.models import PLATFORM_DOUBAN
 from db.repository import CommunityMetaRepo, DataRepo
 from db.engine import async_session_factory
-
-
-@dataclass
-class BindTask:
-    task_id: str
-    platform: str
-    status: Literal["pending", "scanned", "logged_in", "fetching_profile", "scraping", "bound", "failed"] = "pending"
-    qr_base64: str | None = None
-    user_id: str | None = None
-    profile: Profile | None = None
-    error: str | None = None
-    scrape_phase: str | None = None
-    scrape_counts: dict = field(default_factory=dict)
-    event: asyncio.Event = field(default_factory=asyncio.Event)
-    _loop: asyncio.AbstractEventLoop | None = field(default=None, repr=False)
-
-    def bind_loop(self) -> None:
-        self._loop = asyncio.get_running_loop()
-
-    def _notify(self) -> None:
-        if self._loop is None:
-            return
-        self._loop.call_soon_threadsafe(self._set_and_clear)
-
-    def _set_and_clear(self) -> None:
-        self.event.set()
-        self.event.clear()
 
 
 class AsyncBindManager:
@@ -270,7 +242,3 @@ def _extract_dbcl2_expiry(state_json: str) -> str | None:
     except (json.JSONDecodeError, OSError):
         pass
     return None
-
-
-def supported_platforms() -> list[str]:
-    return ["douban", "weread", "flomo"]

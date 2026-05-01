@@ -1,14 +1,50 @@
 import { useState, useRef, useCallback } from "react";
 import {
-  checkBinding,
   startBinding,
   unbind as unbindApi,
   refreshProfile,
   syncData,
   connectBindWs,
-  getCommunityData,
 } from "../../api/douban";
-import type { PlatformProfile, PollResult, CommunityData } from "../../types/douban";
+import type { PlatformProfile, PollResult, CommunityData, BindStatus } from "../../types/community";
+
+const META_KEY = "community_meta";
+
+interface PlatformMeta {
+  bound: boolean;
+  profile?: PlatformProfile;
+  data?: CommunityData;
+}
+
+function readMeta(): Record<string, PlatformMeta> {
+  try { return JSON.parse(localStorage.getItem(META_KEY) || "{}"); }
+  catch { return {}; }
+}
+
+function writeMeta(m: Record<string, PlatformMeta>) {
+  localStorage.setItem(META_KEY, JSON.stringify(m));
+}
+
+function saveBinding(platform: string, bound: boolean, profile?: PlatformProfile | null) {
+  const m = readMeta();
+  const entry = m[platform] ?? { bound: false };
+  entry.bound = bound;
+  if (profile) entry.profile = profile;
+  m[platform] = entry;
+  writeMeta(m);
+}
+
+function removePlatform(platform: string) {
+  const m = readMeta();
+  delete m[platform];
+  writeMeta(m);
+}
+
+export function setCommunityData(platform: string, data: CommunityData) {
+  const m = readMeta();
+  (m[platform] ??= { bound: false }).data = data;
+  writeMeta(m);
+}
 
 export interface PlatformBindingCallbacks {
   onQr: (src: string | null) => void;
@@ -34,7 +70,8 @@ export interface PlatformBindingState {
   handleRefresh: () => Promise<void>;
   handleSync: () => Promise<void>;
   setMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  checkInitial: () => Promise<CommunityData | null>;
+  checkInitial: () => CommunityData | null;
+  initFromApi: (status: BindStatus, data: CommunityData) => void;
 }
 
 export function usePlatformBinding(
@@ -54,12 +91,12 @@ export function usePlatformBinding(
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  const checkInitial = useCallback(async (): Promise<CommunityData | null> => {
-    const data = await checkBinding(platform);
-    if (data.bound) {
+  const checkInitial = useCallback((): CommunityData | null => {
+    const pm = readMeta()[platform];
+    if (pm?.bound) {
       setBound(true);
-      setProfile(data.profile ?? null);
-      return getCommunityData(platform);
+      setProfile(pm.profile ?? null);
+      return pm.data ?? null;
     }
     return null;
   }, [platform]);
@@ -86,6 +123,7 @@ export function usePlatformBinding(
           setScrapeCounts(counts);
           setBinding(false);
           callbacks.onQr(null);
+          saveBinding(platform, true, p);
           if (callbacks.onBindComplete) callbacks.onBindComplete();
         },
         onFailed: (error) => {
@@ -105,6 +143,7 @@ export function usePlatformBinding(
     setBound(false);
     setProfile(null);
     setScrapeCounts({});
+    removePlatform(platform);
     if (callbacks.onUnbind) callbacks.onUnbind();
   };
 
@@ -113,7 +152,10 @@ export function usePlatformBinding(
     setRefreshing(true);
     try {
       const data = await refreshProfile(platform);
-      if (data.profile) setProfile(data.profile);
+      if (data.profile) {
+        setProfile(data.profile);
+        saveBinding(platform, true, data.profile);
+      }
     } catch { /* ignore */ }
     setRefreshing(false);
   };
@@ -131,9 +173,10 @@ export function usePlatformBinding(
           setSyncPhase(phase);
           setScrapeCounts(counts);
         },
-        onBound: async (_userId, _p, counts) => {
+        onBound: async (_userId, p, counts) => {
           setScrapeCounts(counts);
           setSyncing(false);
+          saveBinding(platform, true, p);
           if (callbacks.onBindComplete) callbacks.onBindComplete();
         },
         onFailed: () => {
@@ -145,10 +188,19 @@ export function usePlatformBinding(
     }
   };
 
+  const initFromApi = useCallback((status: BindStatus, data: CommunityData) => {
+    if (status.bound) {
+      setBound(true);
+      setProfile(status.profile ?? null);
+      saveBinding(platform, true, status.profile);
+      setCommunityData(platform, data);
+    }
+  }, [platform]);
+
   return {
     bound, profile, binding, bindPhase, refreshing, syncing,
     syncPhase, scrapePhase, scrapeCounts, menuOpen, menuRef,
     handleBind, handleUnbind, handleRefresh, handleSync, setMenuOpen,
-    checkInitial,
+    checkInitial, initFromApi,
   };
 }

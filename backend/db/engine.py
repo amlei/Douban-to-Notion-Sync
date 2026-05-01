@@ -43,6 +43,6 @@ async def init_db() -> None:
         await conn.execute(
             text(
                 "INSERT OR IGNORE INTO platforms (id, name) VALUES "
-                "(1, 'douban'), (2, 'weread')"
+                "(1, 'douban'), (2, 'weread'), (3, 'flomo')"
             )
         )

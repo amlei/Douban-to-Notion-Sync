@@ -273,4 +273,4 @@ def _extract_dbcl2_expiry(state_json: str) -> str | None:
 
 
 def supported_platforms() -> list[str]:
-    return ["douban", "weread"]
+    return ["douban", "weread", "flomo"]

@@ -7,9 +7,9 @@ import { AuthModal } from "./AuthModal";
 import { tabs } from "./constants";
 import { AccountTab } from "./AccountTab";
 import { DataTab } from "./DataTab";
-import { usePlatformBinding } from "./usePlatformBinding";
-import { getCommunityData } from "../../api/douban";
-import type { BookItem, MovieItem, NoteItem, BookmarkItem } from "../../types/douban";
+import { usePlatformBinding, setCommunityData } from "./usePlatformBinding";
+import { getAllCommunityData, checkAllBindings } from "../../api/douban";
+import type { BookItem, MovieItem, NoteItem, BookmarkItem, MemoItem, CommunityData } from "../../types/community";
 
 interface ProfileModalProps {
   onClose: () => void;
@@ -29,41 +29,75 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [wereadBooks, setWereadBooks] = useState<BookItem[]>([]);
   const [wereadBookmarks, setWereadBookmarks] = useState<BookmarkItem[]>([]);
+  const [flomoMemos, setFlomoMemos] = useState<MemoItem[]>([]);
 
-  const refreshCommunityData = useCallback(async (platform: string) => {
-    const d = await getCommunityData(platform);
+  const applyPlatformData = useCallback((platform: string, d: CommunityData) => {
     if (platform === "douban") {
       setBooks(d.books ?? []);
       setMovies(d.movies ?? []);
       setNotes(d.notes ?? []);
+    } else if (platform === "flomo") {
+      setFlomoMemos(d.memos ?? []);
     } else {
       setWereadBooks(d.books ?? []);
       setWereadBookmarks(d.bookmarks ?? []);
     }
   }, []);
 
+  const refreshCommunityData = useCallback(async () => {
+    const all = await getAllCommunityData();
+    for (const [pf, d] of Object.entries(all)) {
+      setCommunityData(pf, d);
+      applyPlatformData(pf, d);
+    }
+  }, [applyPlatformData]);
+
   const doubanBinding = usePlatformBinding("douban", wsRef, {
     onQr: setQrSrc,
     onError: setBindError,
-    onBindComplete: () => refreshCommunityData("douban"),
+    onBindComplete: refreshCommunityData,
   });
 
   const wereadBinding = usePlatformBinding("weread", wsRef, {
     onQr: setQrSrc,
     onError: setBindError,
-    onBindComplete: () => refreshCommunityData("weread"),
+    onBindComplete: refreshCommunityData,
     onUnbind: () => { setWereadBooks([]); setWereadBookmarks([]); },
   });
 
-  // Check bindings on mount
+  const flomoBinding = usePlatformBinding("flomo", wsRef, {
+    onQr: setQrSrc,
+    onError: setBindError,
+    onBindComplete: refreshCommunityData,
+    onUnbind: () => { setFlomoMemos([]); },
+  });
+
+  // Load cached data on mount, fetch from API if no cache
   useEffect(() => {
     if (!user) return;
-    doubanBinding.checkInitial().then((d) => {
-      if (d) { setBooks(d.books ?? []); setMovies(d.movies ?? []); setNotes(d.notes ?? []); }
-    });
-    wereadBinding.checkInitial().then((d) => {
-      if (d) { setWereadBooks(d.books ?? []); setWereadBookmarks(d.bookmarks ?? []); }
-    });
+
+    const cd = doubanBinding.checkInitial();
+    if (cd) { setBooks(cd.books ?? []); setMovies(cd.movies ?? []); setNotes(cd.notes ?? []); }
+    const cw = wereadBinding.checkInitial();
+    if (cw) { setWereadBooks(cw.books ?? []); setWereadBookmarks(cw.bookmarks ?? []); }
+    const cf = flomoBinding.checkInitial();
+    if (cf) { setFlomoMemos(cf.memos ?? []); }
+
+    if (cd || cw || cf) return;
+
+    (async () => {
+      try {
+        const [bindings, allData] = await Promise.all([checkAllBindings(), getAllCommunityData()]);
+        for (const pf of ["douban", "weread", "flomo"] as const) {
+          const status = bindings[pf];
+          const data = allData[pf];
+          if (!status || !data) continue;
+          if (pf === "douban") { doubanBinding.initFromApi(status, data); setBooks(data.books ?? []); setMovies(data.movies ?? []); setNotes(data.notes ?? []); }
+          else if (pf === "weread") { wereadBinding.initFromApi(status, data); setWereadBooks(data.books ?? []); setWereadBookmarks(data.bookmarks ?? []); }
+          else { flomoBinding.initFromApi(status, data); setFlomoMemos(data.memos ?? []); }
+        }
+      } catch { /* ignore */ }
+    })();
   }, [user]);
 
   // Cleanup WebSocket on unmount
@@ -117,6 +151,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
                 movies={movies}
                 doubanBinding={doubanBinding}
                 wereadBinding={wereadBinding}
+                flomoBinding={flomoBinding}
                 qrSrc={qrSrc}
                 bindError={bindError}
                 activePlatform={activePlatform}
@@ -127,11 +162,13 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
               <DataTab
                 doubanBound={doubanBinding.bound}
                 wereadBound={wereadBinding.bound}
+                flomoBound={flomoBinding.bound}
                 books={books}
                 wereadBooks={wereadBooks}
                 movies={movies}
                 notes={notes}
                 wereadBookmarks={wereadBookmarks}
+                flomoMemos={flomoMemos}
               />
             )}
             {activeTab === "terms" && (

@@ -10,9 +10,10 @@ from db import get_session, init_db
 from db.engine import async_session_factory
 from db.models import User
 from db.repository import CommunityMetaRepo, DataRepo, BookmarkRepo
-from db.models import PLATFORM_DOUBAN, PLATFORM_WEREAD
+from db.models import PLATFORM_DOUBAN, PLATFORM_FLOMO, PLATFORM_WEREAD
 from src.api.douban import AsyncBindManager as DoubanBindManager
 from src.api.douban import supported_platforms
+from src.api.flomo import FlomoBindManager
 from src.api.weread import WereadBindManager
 from src.core.auth.auth import decode_access_token
 from src.core.middleware import AuthMiddleware
@@ -85,12 +86,14 @@ async def chat(request: Request):
 
 PLATFORMS = supported_platforms()
 
-_PLATFORM_NAME_TO_ID = {"douban": PLATFORM_DOUBAN, "weread": PLATFORM_WEREAD}
+_PLATFORM_NAME_TO_ID = {"douban": PLATFORM_DOUBAN, "weread": PLATFORM_WEREAD, "flomo": PLATFORM_FLOMO}
 
 
 def _get_manager(platform: str, db: AsyncSession, user_id: int):
     if platform == "weread":
         return WereadBindManager(db, user_id)
+    if platform == "flomo":
+        return FlomoBindManager(db, user_id)
     return DoubanBindManager(db, user_id)
 
 
@@ -101,11 +104,21 @@ async def community_bind(
     platform: str = Query(...),
     db: AsyncSession = Depends(get_session),
 ):
-    if platform not in PLATFORMS:
-        return {"error": f"Unsupported platform: {platform}"}
     if action not in ("status", "start", "refresh", "delete"):
         return {"error": f"Unsupported action: {action}"}
+
     user = _user(request)
+
+    if platform == "all" and action == "status":
+        result = {}
+        for pf in PLATFORMS:
+            mgr = _get_manager(pf, db, user.id)
+            result[pf] = await mgr.status()
+        return result
+
+    if platform not in PLATFORMS:
+        return {"error": f"Unsupported platform: {platform}"}
+
     mgr = _get_manager(platform, db, user.id)
     if action == "status":
         return await mgr.status()
@@ -147,7 +160,7 @@ async def community_ws(ws: WebSocket, platform: str = Query(...)):
         await ws.close(code=4001)
         return
 
-    await ws.accept()
+    await ws.accept(subprotocol=token)
     if platform not in PLATFORMS:
         await ws.send_json({"status": "failed", "error": f"Unsupported platform: {platform}"})
         await ws.close()
@@ -177,7 +190,11 @@ async def community_ws(ws: WebSocket, platform: str = Query(...)):
                 if task.status == "bound":
                     result["user_id"] = task.user_id
                     if task.profile:
-                        result["profile"] = task.profile.model_dump()
+                        result["profile"] = (
+                            task.profile.model_dump()
+                            if hasattr(task.profile, "model_dump")
+                            else task.profile
+                        )
                     result["scrape_counts"] = task.scrape_counts
                 if task.status == "failed":
                     result["error"] = task.error
@@ -190,6 +207,13 @@ async def community_ws(ws: WebSocket, platform: str = Query(...)):
                 await task.event.wait()
         except WebSocketDisconnect:
             pass
+        except Exception:
+            import logging
+            logging.getLogger("api.ws").exception("WebSocket error")
+            try:
+                await ws.close(code=1011)
+            except Exception:
+                pass
 
 
 # ---- Community Data ----
@@ -198,24 +222,33 @@ async def community_ws(ws: WebSocket, platform: str = Query(...)):
 @app.get("/api/community/data")
 async def community_data(
     request: Request,
-    platform: str = Query(default="douban"),
+    platform: str = Query(default="all"),
     db: AsyncSession = Depends(get_session),
 ):
-    if platform not in PLATFORMS:
-        return {"error": f"Unsupported platform: {platform}"}
+    if platform != "all":
+        return {"error": "Use platform=all to fetch all platform data"}
     user = _user(request)
 
-    if platform == "weread":
-        all_books = await DataRepo.get_books(db, user.id)
-        books = [row.to_api_dict() for row in all_books if row.platform_id == PLATFORM_WEREAD]
-        bookmarks = [row.to_api_dict() for row in await BookmarkRepo.get_bookmarks(db, user.id)]
-        return {"books": books, "bookmarks": bookmarks}
-
     all_books = await DataRepo.get_books(db, user.id)
-    books = [row.to_api_dict() for row in all_books if row.platform_id == PLATFORM_DOUBAN]
     movies = [row.to_api_dict() for row in await DataRepo.get_movies(db, user.id)]
     notes = [row.to_api_dict() for row in await DataRepo.get_notes(db, user.id)]
-    return {"books": books, "movies": movies, "notes": notes}
+    bookmarks = [row.to_api_dict() for row in await BookmarkRepo.get_bookmarks(db, user.id)]
+    memos = [row.to_api_dict() for row in await DataRepo.get_flomo_memos(db, user.id)]
+
+    return {
+        "douban": {
+            "books": [row.to_api_dict() for row in all_books if row.platform_id == PLATFORM_DOUBAN],
+            "movies": movies,
+            "notes": notes,
+        },
+        "weread": {
+            "books": [row.to_api_dict() for row in all_books if row.platform_id == PLATFORM_WEREAD],
+            "bookmarks": bookmarks,
+        },
+        "flomo": {
+            "memos": memos,
+        },
+    }
 
 
 if __name__ == "__main__":

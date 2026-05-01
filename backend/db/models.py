@@ -9,6 +9,7 @@ from .base import Base
 
 PLATFORM_DOUBAN = 1
 PLATFORM_WEREAD = 2
+PLATFORM_FLOMO = 3
 
 
 class PlatformRow(Base):
@@ -292,3 +293,33 @@ class BookmarkRow(Base):
 def _now() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
+
+
+class FlomoMemoRow(Base):
+    __tablename__ = "flomo_memos"
+    __table_args__ = (
+        UniqueConstraint("user_id", "platform_id", "memo_created_at", name="uq_flomo_memos_user_time"),
+        Index("ix_flomo_memos_user_id", "user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    platform_id: Mapped[int] = mapped_column(ForeignKey("platforms.id"), default=PLATFORM_FLOMO)
+    content: Mapped[str]  # raw HTML content
+    tags: Mapped[str | None]  # JSON array: ["#tag1", "#tag2/sub"]
+    files: Mapped[str | None]  # JSON array: ["file/2026-04-01/.../xxx.jpg"]
+    memo_created_at: Mapped[str]  # original creation time from flomo
+    updated_at: Mapped[str] = mapped_column(default=lambda: _now(), onupdate=lambda: _now())
+    scraped_at: Mapped[str] = mapped_column(default=lambda: _now())
+
+    def to_api_dict(self) -> dict:
+        tags = json.loads(self.tags) if self.tags else []
+        files = json.loads(self.files) if self.files else []
+        return {
+            "platform_id": self.platform_id,
+            "content": self.content,
+            "tags": tags,
+            "files": files,
+            "memo_created_at": self.memo_created_at,
+            "updated_at": self.updated_at,
+        }

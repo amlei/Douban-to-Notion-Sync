@@ -1,6 +1,4 @@
 import json
-import time
-from http.cookiejar import Cookie
 from pathlib import Path
 from typing import Callable
 
@@ -11,12 +9,25 @@ import requests
 
 from .. import DEFAULT_HEADERS
 
-_AUTH_COOKIE = "dbcl2"
+_LOCAL_STORAGE_ME_KEY = "me"
+
+
+def _find_me_in_state(data: dict) -> dict | None:
+    """Extract the 'me' localStorage entry from Playwright storage state."""
+    for origin in data.get("origins", []):
+        for entry in origin.get("localStorage", []):
+            if entry.get("name") == _LOCAL_STORAGE_ME_KEY:
+                try:
+                    return json.loads(entry.get("value", "{}"))
+                except (json.JSONDecodeError, TypeError):
+                    continue
+    return None
 
 
 class SessionManager:
-    """Manages Douban Playwright session state (cookies + localStorage).
+    """Manages Flomo Playwright session state.
 
+    Flomo stores auth in localStorage (key "me" with access_token), not cookies.
     Operates in DB mode: receives pre-loaded JSON string from the database
     and writes back through a callback.
     """
@@ -31,24 +42,21 @@ class SessionManager:
 
     @property
     def has_valid_session(self) -> bool:
-        """Check if session state exists and the auth cookie has not expired."""
+        """Check if session state exists and contains a valid access_token."""
         if not self._state_json:
             return False
         try:
             data = json.loads(self._state_json)
         except (json.JSONDecodeError, OSError):
             return False
-        now = time.time()
-        for cookie in data.get("cookies", []):
-            if cookie.get("name") == _AUTH_COOKIE:
-                return cookie.get("expires", -1) > now
-        return False
+        me = _find_me_in_state(data)
+        return me is not None and bool(me.get("access_token"))
 
     def get_storage_state(self) -> str | None:
         """Write state JSON to a temp file and return the path for Playwright."""
         if not self._state_json:
             return None
-        tmp = Path(__file__).resolve().parents[4] / "tmp" / "douban-state-db.json"
+        tmp = Path(__file__).resolve().parents[4] / "tmp" / "flomo-state-db.json"
         tmp.parent.mkdir(parents=True, exist_ok=True)
         tmp.write_text(self._state_json, encoding="utf-8")
         return str(tmp)
@@ -61,7 +69,9 @@ class SessionManager:
             self._on_save_state(self._state_json)
 
     def build_http_session(self) -> requests.Session:
-        """Build a requests.Session with cookies and headers from saved state."""
+        """Build a requests.Session with cookies from saved state."""
+        from http.cookiejar import Cookie
+
         session = requests.Session()
         session.headers.update(DEFAULT_HEADERS)
 

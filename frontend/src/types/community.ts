@@ -19,7 +19,7 @@ export interface PollResult {
   qr_base64?: string;
   user_id?: string;
   profile?: PlatformProfile;
-  scrape_phase?: "books" | "movies" | "bookmarks" | "done";
+  scrape_phase?: "books" | "movies" | "bookmarks" | "memos" | "done";
   scrape_counts?: Record<string, number>;
   error?: string;
 }
@@ -81,9 +81,23 @@ export interface BookmarkItem {
   bookmark_id: string | null;
 }
 
+export interface MemoItem {
+  platform_id?: number;
+  content: string;
+  tags: string[];
+  files: string[];
+  memo_created_at: string;
+  updated_at: string;
+}
+
 export interface CommunityData {
   books: BookItem[];
   movies: MovieItem[];
   notes: NoteItem[];
   bookmarks?: BookmarkItem[];
+  memos?: MemoItem[];
 }
+
+export type AllCommunityData = Record<string, CommunityData>;
+
+export type AllBindings = Record<string, BindStatus>;

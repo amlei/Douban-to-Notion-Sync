@@ -6,7 +6,7 @@ import { platforms } from "./constants";
 import { PlatformCard } from "./PlatformCard";
 import { PasswordModal } from "./PasswordModal";
 import type { PlatformBindingState } from "./usePlatformBinding";
-import type { BookItem, MovieItem } from "../../types/douban";
+import type { BookItem, MovieItem } from "../../types/community";
 
 interface AccountTabProps {
   user: { name: string; email: string; avatar: string | null; bio: string | null };
@@ -17,6 +17,7 @@ interface AccountTabProps {
   movies: MovieItem[];
   doubanBinding: PlatformBindingState;
   wereadBinding: PlatformBindingState;
+  flomoBinding: PlatformBindingState;
   qrSrc: string | null;
   bindError: string | null;
   activePlatform: string;
@@ -26,7 +27,7 @@ interface AccountTabProps {
 export function AccountTab({
   user, refreshUser, logout,
   books, wereadBooks, movies,
-  doubanBinding, wereadBinding,
+  doubanBinding, wereadBinding, flomoBinding,
   qrSrc, bindError,
   activePlatform, onPlatformChange,
 }: AccountTabProps) {
@@ -230,7 +231,16 @@ export function AccountTab({
               binding={wereadBinding}
             />
           )}
-          {activePlatform !== "douban" && activePlatform !== "weread" &&
+          {activePlatform === "flomo" && (
+            <PlatformCard
+              platform="flomo"
+              icon="/flomoapp.svg"
+              iconRounded={false}
+              label="flomo"
+              binding={flomoBinding}
+            />
+          )}
+          {activePlatform !== "douban" && activePlatform !== "weread" && activePlatform !== "flomo" &&
             (() => {
               const p = platforms.find((x) => x.id === activePlatform)!;
               return (
@@ -253,7 +263,7 @@ export function AccountTab({
             <div className="qr-overlay">
               <div className="qr-card">
                 <img src={qrSrc} alt="QR Code" className="qr-image" />
-                <p>使用{activePlatform === "weread" ? "微信" : "豆瓣 App"}扫码登录</p>
+                <p>使用{activePlatform === "weread" || activePlatform === "flomo" ? "微信" : "豆瓣 App"}扫码登录</p>
               </div>
             </div>
           )}

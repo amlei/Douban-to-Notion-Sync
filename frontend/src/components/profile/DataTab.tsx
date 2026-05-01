@@ -1,21 +1,23 @@
 import { useState } from "react";
 import "./DataTab.css";
-import type { BookItem, MovieItem, NoteItem, BookmarkItem } from "../../types/douban";
+import type { BookItem, MovieItem, NoteItem, BookmarkItem, MemoItem } from "../../types/community";
 
 interface DataTabProps {
   doubanBound: boolean;
   wereadBound: boolean;
+  flomoBound: boolean;
   books: BookItem[];
   wereadBooks: BookItem[];
   movies: MovieItem[];
   notes: NoteItem[];
   wereadBookmarks: BookmarkItem[];
+  flomoMemos: MemoItem[];
 }
 
-export function DataTab({ doubanBound, wereadBound, books, wereadBooks, movies, notes, wereadBookmarks }: DataTabProps) {
-  const [dataTab, setDataTab] = useState<"books" | "movies" | "notes" | "bookmarks">("books");
+export function DataTab({ doubanBound, wereadBound, flomoBound, books, wereadBooks, movies, notes, wereadBookmarks, flomoMemos }: DataTabProps) {
+  const [dataTab, setDataTab] = useState<"books" | "movies" | "notes" | "bookmarks" | "memos">("books");
 
-  if (!doubanBound && !wereadBound) {
+  if (!doubanBound && !wereadBound && !flomoBound) {
     return (
       <div className="settings-page">
         <h3>数据管理</h3>
@@ -58,6 +60,14 @@ export function DataTab({ doubanBound, wereadBound, books, wereadBooks, movies, 
             onClick={() => setDataTab("bookmarks")}
           >
             读书笔记 ({wereadBookmarks.length})
+          </button>
+        )}
+        {flomoBound && (
+          <button
+            className={`data-tab ${dataTab === "memos" ? "active" : ""}`}
+            onClick={() => setDataTab("memos")}
+          >
+            flomo 笔记 ({flomoMemos.length})
           </button>
         )}
       </div>
@@ -162,6 +172,29 @@ export function DataTab({ doubanBound, wereadBound, books, wereadBooks, movies, 
             </span>
           </div>
         ))}
+        {dataTab === "memos" && flomoMemos.map((m, i) => (
+          <div key={`${m.memo_created_at}-${i}`} className="data-item" style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
+              <span className="data-item-meta">
+                {m.memo_created_at}
+              </span>
+              <img
+                src="/flomoapp.svg"
+                alt=""
+                style={{ height: 14, verticalAlign: "middle", opacity: 0.7 }}
+              />
+            </div>
+            <div
+              style={{ fontSize: "0.85rem", lineHeight: 1.6, color: "var(--text)" }}
+              dangerouslySetInnerHTML={{ __html: m.content }}
+            />
+            {m.tags.length > 0 && (
+              <div className="data-item-tags">
+                {m.tags.map((t) => <span key={t} className="data-tag">{t}</span>)}
+              </div>
+            )}
+          </div>
+        ))}
         {dataTab === "books" && books.length === 0 && wereadBooks.length === 0 && (
           <p className="settings-desc">暂无图书数据，点击"同步数据"开始导入。</p>
         )}
@@ -173,6 +206,9 @@ export function DataTab({ doubanBound, wereadBound, books, wereadBooks, movies, 
         )}
         {dataTab === "bookmarks" && wereadBookmarks.length === 0 && (
           <p className="settings-desc">暂无笔记数据，点击"同步数据"开始导入。</p>
+        )}
+        {dataTab === "memos" && flomoMemos.length === 0 && (
+          <p className="settings-desc">暂无 flomo 笔记数据，点击"同步数据"开始导入。</p>
         )}
       </div>
     </div>

@@ -1,6 +1,52 @@
 import type { UserProfile, AuthTokens } from "../types";
 
-const BASE = "/api/auth";
+const AUTH_KEY = "auth";
+
+interface StoredAuth {
+  access_token: string;
+  user: UserProfile;
+  expires_at: number;
+}
+
+function decodeJwtExp(token: string): number | null {
+  try {
+    const payload = token.split(".")[1];
+    const { exp } = JSON.parse(atob(payload));
+    return typeof exp === "number" ? exp : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getAuth(): StoredAuth | null {
+  const raw = localStorage.getItem(AUTH_KEY);
+  if (!raw) return null;
+  try {
+    const auth: StoredAuth = JSON.parse(raw);
+    if (auth.expires_at && auth.expires_at * 1000 < Date.now()) {
+      localStorage.removeItem(AUTH_KEY);
+      return null;
+    }
+    return auth;
+  } catch {
+    localStorage.removeItem(AUTH_KEY);
+    return null;
+  }
+}
+
+export function saveAuth(tokens: AuthTokens): void {
+  const expires_at = decodeJwtExp(tokens.access_token);
+  const auth: StoredAuth = {
+    access_token: tokens.access_token,
+    user: tokens.user,
+    expires_at: expires_at ?? 0,
+  };
+  localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+}
+
+export function clearAuth(): void {
+  localStorage.clear();
+}
 
 let _onUnauthorized: (() => void) | null = null;
 
@@ -9,15 +55,15 @@ export function setOnUnauthorized(cb: () => void) {
 }
 
 export function authedFetch(input: string, init?: RequestInit): Promise<Response> {
-  const token = localStorage.getItem("auth_token");
+  const auth = getAuth();
   const headers: Record<string, string> = {
     ...(init?.headers as Record<string, string> ?? {}),
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (auth) headers["Authorization"] = `Bearer ${auth.access_token}`;
   const promise = fetch(input, { ...init, headers });
   promise.then((res) => {
     if (res.status === 401) {
-      localStorage.removeItem("auth_token");
+      clearAuth();
       _onUnauthorized?.();
     }
   });
@@ -27,12 +73,12 @@ export function authedFetch(input: string, init?: RequestInit): Promise<Response
 async function authFetch(body: Record<string, unknown>, authed = false): Promise<Response> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (authed) {
-    const token = localStorage.getItem("auth_token");
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const auth = getAuth();
+    if (auth) headers["Authorization"] = `Bearer ${auth.access_token}`;
   }
-  const res = await fetch(BASE, { method: "POST", headers, body: JSON.stringify(body) });
+  const res = await fetch("/api/auth", { method: "POST", headers, body: JSON.stringify(body) });
   if (authed && res.status === 401) {
-    localStorage.removeItem("auth_token");
+    clearAuth();
     _onUnauthorized?.();
   }
   return res;

@@ -1,8 +1,8 @@
-import type { BindStatus, PollResult, CommunityData } from "../types/douban";
-import { authedFetch } from "./auth";
+import type { BindStatus, PollResult, CommunityData } from "../types/community";
+import { authedFetch, getAuth } from "./auth";
 
 export type { BindStatus, PollResult, CommunityData };
-export type { PlatformProfile, BookItem, MovieItem, NoteItem, BookmarkItem } from "../types/douban";
+export type { PlatformProfile, BookItem, MovieItem, NoteItem, BookmarkItem } from "../types/community";
 
 async function bindAction(
   action: "status" | "start" | "refresh" | "delete",
@@ -13,8 +13,8 @@ async function bindAction(
   });
 }
 
-export async function checkBinding(platform: string): Promise<BindStatus> {
-  const res = await bindAction("status", platform);
+export async function checkAllBindings(): Promise<Record<string, BindStatus>> {
+  const res = await bindAction("status", "all");
   return res.json();
 }
 
@@ -38,8 +38,8 @@ export async function syncData(platform: string): Promise<{ task_id: string }> {
   return res.json();
 }
 
-export async function getCommunityData(platform: string = "douban"): Promise<CommunityData> {
-  const res = await authedFetch(`/api/community/data?platform=${platform}`);
+export async function getAllCommunityData(): Promise<Record<string, CommunityData>> {
+  const res = await authedFetch("/api/community/data?platform=all");
   return res.json();
 }
 
@@ -52,7 +52,7 @@ export interface BindWsCallbacks {
 }
 
 export function connectBindWs(platform: string, cb: BindWsCallbacks): WebSocket {
-  const token = localStorage.getItem("auth_token") ?? "";
+  const token = getAuth()?.access_token ?? "";
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(`${proto}//${location.host}/api/community/ws?platform=${platform}`, token);
 
@@ -63,6 +63,12 @@ export function connectBindWs(platform: string, cb: BindWsCallbacks): WebSocket 
     if (data.status === "scraping") cb.onScraping(data.scrape_phase ?? "books", data.scrape_counts ?? {});
     if (data.status === "bound") cb.onBound(data.user_id!, data.profile ?? undefined, data.scrape_counts ?? {});
     if (data.status === "failed") cb.onFailed(data.error ?? "绑定失败");
+  };
+
+  ws.onclose = (e) => {
+    if (e.code !== 1000) {
+      cb.onStatus("idle");
+    }
   };
 
   return ws;

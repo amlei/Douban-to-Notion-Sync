@@ -9,17 +9,20 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.community.douban.models import Book, Game, Movie, Note, Profile as DoubanProfile, Review
+from src.community.flomo.models import FlomoMemo
+from src.community.flomo.models import Profile as FlomoProfile
 from src.community.weread.models import Bookmark as WereadBookmark
 from src.community.weread.models import Book as WereadBook
 from src.community.weread.models import Profile as WereadProfile
-from db.models import PLATFORM_DOUBAN, PLATFORM_WEREAD
+from db.models import PLATFORM_DOUBAN, PLATFORM_FLOMO, PLATFORM_WEREAD
 
-# Union type for save_binding -- accepts either Douban or WeRead Profile
-AnyProfile = DoubanProfile | WereadProfile
+# Union type for save_binding -- accepts Douban, Flomo, or WeRead Profile
+AnyProfile = DoubanProfile | WereadProfile | FlomoProfile
 
 from .models import (
     BookRow,
     CommunityMeta,
+    FlomoMemoRow,
     GameRow,
     MovieRow,
     NoteRow,
@@ -373,6 +376,64 @@ class DataRepo:
     @staticmethod
     async def get_notes(db: AsyncSession, user_id: int) -> Sequence[NoteRow]:
         stmt = select(NoteRow).where(NoteRow.user_id == user_id)
+        return (await db.execute(stmt)).scalars().all()
+
+    @staticmethod
+    async def upsert_flomo_memos(
+        db: AsyncSession, user_id: int, items: list[FlomoMemo]
+    ) -> dict:
+        """Upsert flomo memos, skipping unchanged ones.
+
+        Returns {"total": N, "updated": M, "unchanged": K}.
+        """
+        # Load existing memos for change detection
+        stmt = select(FlomoMemoRow).where(
+            FlomoMemoRow.user_id == user_id,
+            FlomoMemoRow.platform_id == PLATFORM_FLOMO,
+        )
+        existing_rows = (await db.execute(stmt)).scalars().all()
+        existing_map: dict[str, FlomoMemoRow] = {
+            r.memo_created_at: r for r in existing_rows
+        }
+
+        updated = 0
+        unchanged = 0
+        for item in items:
+            tags_json = json.dumps(item.tags, ensure_ascii=False) if item.tags else None
+            files_json = json.dumps(item.files, ensure_ascii=False) if item.files else None
+            existing = existing_map.get(item.memo_created_at)
+            if (
+                existing is not None
+                and existing.content == item.content
+                and existing.tags == tags_json
+                and existing.files == files_json
+            ):
+                unchanged += 1
+                continue
+            stmt = insert(FlomoMemoRow).values(
+                user_id=user_id,
+                platform_id=PLATFORM_FLOMO,
+                content=item.content,
+                tags=tags_json,
+                files=files_json,
+                memo_created_at=item.memo_created_at,
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["user_id", "platform_id", "memo_created_at"],
+                set_={
+                    "content": stmt.excluded.content,
+                    "tags": stmt.excluded.tags,
+                    "files": stmt.excluded.files,
+                },
+            )
+            await db.execute(stmt)
+            updated += 1
+        await db.flush()
+        return {"total": len(items), "updated": updated, "unchanged": unchanged}
+
+    @staticmethod
+    async def get_flomo_memos(db: AsyncSession, user_id: int) -> Sequence[FlomoMemoRow]:
+        stmt = select(FlomoMemoRow).where(FlomoMemoRow.user_id == user_id)
         return (await db.execute(stmt)).scalars().all()
 
 

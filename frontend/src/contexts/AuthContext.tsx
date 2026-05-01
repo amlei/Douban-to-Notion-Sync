@@ -19,7 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("auth_token");
+    authApi.clearAuth();
     setUser(null);
   }, []);
 
@@ -28,19 +28,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout]);
 
   useEffect(() => {
-    const token = localStorage.getItem("auth_token");
-    if (!token) {
-      setLoading(false);
-      return;
+    const auth = authApi.getAuth();
+    if (auth) {
+      setUser(auth.user);
     }
-    authApi.getMe().then(setUser).catch(() => {
-      localStorage.removeItem("auth_token");
-    }).finally(() => setLoading(false));
+    setLoading(false);
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     const tokens = await authApi.login(email, password);
-    localStorage.setItem("auth_token", tokens.access_token);
+    authApi.saveAuth(tokens);
     setUser(tokens.user);
   }, []);
 
@@ -50,13 +47,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const verifyAndCreate = useCallback(async (email: string, code: string, password: string) => {
     const tokens = await authApi.verifyAndCreate(email, code, password);
-    localStorage.setItem("auth_token", tokens.access_token);
+    authApi.saveAuth(tokens);
     setUser(tokens.user);
   }, []);
 
   const refreshUser = useCallback(async () => {
     const u = await authApi.getMe();
     setUser(u);
+    const auth = authApi.getAuth();
+    if (auth) {
+      auth.user = u;
+      localStorage.setItem("auth", JSON.stringify(auth));
+    }
   }, []);
 
   return (

@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/Banner.png" alt="LifeInk AI" width="100%" />
+</div>
+
 # LifeInk AI
 
 > Personal AI Agent - 聚合书影音日记，用 AI 重新理解你的生活。
@@ -6,79 +10,106 @@ LifeInk AI 从豆瓣、微信读书、Flomo 等平台采集个人的阅读、影
 
 ---
 
-## 愿景
-
-让每个人的生活记录不再是沉睡的数据，而是可以被理解、回顾和重新发现的记忆。
-
-### 核心能力
-
-- **数据聚合** - 统一采集多平台个人数据（书影音、日记、想法）
-- **AI 对话** - 基于个人数据与 AI 自由对话，获取洞察与推荐
-- **自动报告** - 周报、月报、年报自动生成，支持 Markdown / PDF / Web 导出
-- **数据可视化** - 阅读趋势、评分分布、标签云、时间线看板
-
----
-
 ## 当前状态
+
+### 用户系统
+
+- [x] JWT 邮箱注册/登录（bcrypt 密码哈希）
+- [x] 邮箱验证码（SMTP，预设 qq/outlook/163/126/yeah）
+- [x] 个人资料编辑、密码修改、账号注销
 
 ### 数据源
 
 - [x] 豆瓣 - 图书、影视、游戏、书评、日记、个人资料（Playwright）
 - [x] 豆瓣 - 图书、影视同步至 Notion（requests）
-- [ ] 微信读书（weread）
-- [ ] Flomo
+- [x] 微信读书 - 书架、标注、个人资料（Playwright 浏览器自动化）
+- [x] Flomo - 日记导出与同步（Playwright 浏览器自动化）
 
 ### 数据同步
 
 - [x] 增量同步至 Notion 数据库
 - [x] 自动登录检测（session 过期弹二维码）
 - [x] 翻页数据提取、图标/封面/评分
+- [x] 本地 SQLite 数据库存储（SQLAlchemy async）
+- [x] 绑定后自动抓取数据
+
+### AI Agent
+
+- [x] 前端聊天界面（React + Vite）
+- [x] 流式响应（StreamingResponse + AI SDK）
+- [ ] 开发 AI Agent
 
 ---
 
 ## 项目结构
 
 ```
- main.py              - Notion 同步入口
- function/
-   glo.py             - 全局配置
-   spider.py          - 豆瓣数据爬取（requests）
- json/                - Notion 数据库模板
- icon/                - 页面图标
+main.py              # Notion 同步入口（legacy）
+function/
+  glo.py             # 全局配置
+  spider.py          # 豆瓣数据爬取（requests）
+json/                # Notion 数据库模板
+icon/                # 页面图标
 
- docs/                - 文档
+backend/             # API 服务 + 数据抓取（uv 独立项目）
+  src/api.py         # FastAPI 应用（路由、WebSocket）
+  src/api/           # 平台绑定管理器
+    douban.py        # 豆瓣 AsyncBindManager
+    weread.py        # 微信读书 WereadBindManager
+    flomo.py         # Flomo FlomoBindManager
+  src/core/          # 认证与基础设施
+    auth/            # JWT 认证（注册/登录/验证码/密码重置）
+    middleware.py    # AuthMiddleware（全局 JWT 校验）
+    utils/           # 配置加载、邮件发送、Redis
+  src/community/     # 社区数据源
+    douban/          # 豆瓣（Playwright 登录 + requests 抓取）
+    weread/          # 微信读书（Playwright 浏览器自动化）
+    flomo/           # Flomo（Playwright 浏览器自动化 + HTML 导出解析）
+  db/                # SQLAlchemy 异步数据库层（SQLite）
+  tests/             # pytest 测试
 
- src/feature/         - 新版模块（uv 独立项目）
-   feature/community/
-     douban/          - 豆瓣数据抓取（Playwright）
-       models/        - 数据模型（Pydantic）
-       scrapers/      - 各类型抓取器
-       client.py      - API 客户端
-       login.py       - 登录管理
-       session.py     - 会话持久化
-     weread/          - 微信读书（待开发）
-     flomo/           - Flomo（待开发）
+frontend/            # React 聊天界面（Bun + Vite）
+  src/api/           # API 集成（auth.ts, douban.ts）
+  src/components/    # UI 组件（AuthModal, Sidebar, ChatPanel, ProfileModal 等）
+  src/contexts/      # React Context（AuthContext）
+  src/hooks/         # 自定义 Hook（useChatStore）
+  src/types/         # TypeScript 类型定义
 ```
 
 ---
 
 ## 快速开始
 
-### Notion 同步（原有功能）
-
-1. 安装依赖：`pip install -r requirements.txt`
-2. 配置 `.env`（TOKEN、DATABASE_ID、COOKIE 等）
-3. 运行 `python main.py`
-
-### Playwright 抓取（新版模块）
+### 一键启动
 
 ```bash
-cd src/feature
-uv sync
-uv run python -m feature
+./start.sh
 ```
 
-详见 [src/feature/README.md](./src/feature/README.md)。
+启动后：
+- 前端: http://localhost:5173
+- 后端: http://localhost:8000
+- API 文档: http://localhost:8000/docs
+
+### 后端单独启动
+
+```bash
+cd backend
+uv sync
+uv run python -m playwright install chromium  # 首次
+cp config-example.yaml config.yaml            # 配置 SMTP（注册功能需要）
+uv run python src/api.py
+```
+
+详见 [backend/README.md](./backend/README.md)。
+
+### Notion 同步（原有功能）
+
+```bash
+pip install -r requirements.txt
+# 配置 .env（TOKEN、DATABASE_ID、COOKIE 等）
+python main.py
+```
 
 ---
 
@@ -87,9 +118,10 @@ uv run python -m feature
 ### Phase 1 - 数据采集 (current)
 
 - [x] 豆瓣全量数据抓取
-- [ ] 微信读书数据接入
-- [ ] Flomo 数据接入
-- [ ] 统一数据模型与存储层
+- [x] 本地数据持久化
+- [x] 用户注册与登录系统
+- [x] 微信读书数据接入
+- [x] Flomo 数据接入
 
 ### Phase 2 - AI Agent
 
@@ -116,5 +148,5 @@ uv run python -m feature
 ## 参考
 
 - [Notion API](https://www.notion.so/my-integrations)
-- [Notion API 使用教程 - Bilibili](https://www.bilibili.com/video/BV15o4y1W7hw/)
 - [Playwright](https://playwright.dev/python/)
+- [Vercel AI SDK](https://sdk.vercel.ai/)

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import "./WelcomeScreen.css";
 import { Send } from "lucide-react";
 
 interface WelcomeScreenProps {
@@ -19,8 +20,8 @@ export function WelcomeScreen({ onSend }: WelcomeScreenProps) {
       <div className="brand">LifeInk AI</div>
       <div className="input-box">
         <textarea
-          rows={2}
-          placeholder="Ask about your reading, movies, journals..."
+          rows={4}
+          placeholder="询问你的阅读、观影、日记..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {

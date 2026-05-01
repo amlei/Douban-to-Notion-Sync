@@ -1,0 +1,23 @@
+# provider: qq / outlook / 163 / 126 / yeah / custom
+# For presets, only username and password are required.
+# For "custom", fill in host/port/use_ssl manually.
+smtp:
+  provider: "qq"
+  username: ""
+  password: ""
+  # from_email defaults to username if empty
+  # from_email: ""
+  # Override preset (leave empty to use preset defaults):
+  # host: ""
+  # port: 0
+  # use_tls: false
+  # use_ssl: false
+
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+  password: ""
+
+# JWT secret -- auto-generated on first startup if left empty.
+# jwt_secret: ""

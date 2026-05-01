@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import "./ChatPanel.css";
 import { useChat } from "@ai-sdk/react";
 import { TextStreamChatTransport } from "ai";
 import { Send } from "lucide-react";
@@ -68,8 +69,8 @@ export function ChatPanel({ chatId, store }: ChatPanelProps) {
       <div className="chat-input-bar">
         <div className="input-box">
           <textarea
-            rows={2}
-            placeholder="Continue the conversation..."
+            rows={4}
+            placeholder="继续对话..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {

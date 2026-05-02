@@ -96,6 +96,7 @@ backend/
   src/
     api.py                          # FastAPI 应用（路由、WebSocket）
     api/
+      base.py                       # BindTask 数据类 + supported_platforms()
       douban.py                     # 豆瓣 AsyncBindManager
       weread.py                     # 微信读书 WereadBindManager
       flomo.py                      # Flomo FlomoBindManager

@@ -11,8 +11,8 @@ from db.engine import async_session_factory
 from db.models import User
 from db.repository import CommunityMetaRepo, DataRepo, BookmarkRepo
 from db.models import PLATFORM_DOUBAN, PLATFORM_FLOMO, PLATFORM_WEREAD
+from src.api.base import supported_platforms
 from src.api.douban import AsyncBindManager as DoubanBindManager
-from src.api.douban import supported_platforms
 from src.api.flomo import FlomoBindManager
 from src.api.weread import WereadBindManager
 from src.core.auth.auth import decode_access_token

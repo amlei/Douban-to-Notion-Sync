@@ -21,12 +21,11 @@ jobs:
       - name: Syntax check - main project
         run: python -m py_compile main.py && python -m py_compile function/spider.py && python -m py_compile function/glo.py
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - name: Install scraper dependencies
+        run: pip install -r backend/scraper/requirements.txt
 
-      - name: Syntax check - backend module
-        working-directory: backend
-        run: uv sync && uv run python -m py_compile __main__.py
+      - name: Syntax check - scraper module
+        run: python -m py_compile backend/scraper/server.py
 
   auto-merge:
     needs: check

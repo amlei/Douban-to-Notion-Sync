@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m ' *)",
+      "Bash(gh issue *)",
+      "Bash(gh label *)"
+    ]
+  }
+}

@@ -1,0 +1,113 @@
+/* Key-value row list */
+.settings-kv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 16px;
+}
+
+.settings-kv-row {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 6px 0;
+}
+
+.settings-kv-label {
+  width: 80px;
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.settings-kv-value {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings-kv-text {
+  font-size: 0.95rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-kv-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-kv-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-light);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.settings-kv-action:hover {
+  background: var(--sky-50);
+  color: var(--sky-600);
+}
+
+/* Avatar */
+.avatar-editable-sm {
+  cursor: pointer;
+  display: inline-flex;
+  transition: opacity 0.15s;
+}
+.avatar-editable-sm:hover {
+  opacity: 0.8;
+}
+.avatar-sm {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.avatar-sm-placeholder {
+  background: var(--sky-100);
+  color: var(--sky-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Modal field styles */
+.profile-field-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.profile-field-edit label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Logout button */
+.account-logout-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-light);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.account-logout-btn:hover {
+  background: var(--sky-50);
+  color: var(--text);
+}

@@ -7,6 +7,7 @@ smtp:
   password: ""
   # from_email defaults to username if empty
   # from_email: ""
+  # from_name: LifeInk AI
   # Override preset (leave empty to use preset defaults):
   # host: ""
   # port: 0
@@ -19,5 +20,16 @@ redis:
   db: 0
   password: ""
 
+postgres:
+  host: "localhost"
+  port: 5432
+  user: "lifeink"
+  password: ""
+  dbname: "lifeink"
+  sslmode: "disable"
+
 # JWT secret -- auto-generated on first startup if left empty.
 # jwt_secret: ""
+
+# Python scraper service URL
+scraper_url: "http://127.0.0.1:50051"

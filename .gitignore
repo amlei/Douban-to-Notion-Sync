@@ -71,3 +71,11 @@ last mark/
 # Config
 backend/config.yaml
 
+# Go build artifacts
+backend/lifeink-api
+backend/bin/
+backend/backend
+
+# Scraper virtual environment
+backend/scraper/__pycache__/
+

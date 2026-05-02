@@ -8,23 +8,31 @@ LifeInk AI -- a personal data aggregator that scrapes book/movie/memo data from 
 
 ## Development Commands
 
-### Backend (FastAPI + Playwright scraper)
+### Backend (Go API Server)
 
 ```bash
 cd backend
-uv sync
-uv run python -m playwright install chromium   # first time only
-uv run python __main__.py --type books --pages 3   # CLI scraper
-uv run python __main__.py --type browser           # open interactive browser with saved session
-uv run python src/api.py                           # start API server (port 8000)
-uv run pytest tests/ -v -s                         # run all tests
-uv run pytest tests/test_weread_client.py -v -s    # run a single test file
-uv run pytest tests/test_weread_client.py::test_name -v -s  # run a single test
+# Start Go API server (port 8000)
+go run main.go
+
+# Build binary
+go build -o lifeink-api .
+
+# Run SQLite -> PostgreSQL migration
+go run cmd/migrate/main.go
+
+# Run tests
+go test ./... -v
 ```
 
-Valid `--type` values: `profile`, `books`, `movies`, `games`, `reviews`, `notes`, `browser`.
+### Python Scraper Service (Playwright)
 
-Backend config (SMTP for email verification): copy `config-example.yaml` to `config.yaml` and fill in credentials.
+```bash
+cd backend/scraper
+pip install -r requirements.txt
+python -m playwright install chromium   # first time only
+uvicorn server:app --port 50051          # start scraper microservice
+```
 
 ### Frontend (React + Vite + Bun)
 
@@ -40,7 +48,14 @@ bun run preview       # preview production build
 ### One-command startup
 
 ```bash
-./start.sh            # starts backend (uv) + frontend (bun run dev) concurrently
+# Terminal 1: Python scraper service
+cd backend/scraper && uvicorn server:app --port 50051
+
+# Terminal 2: Go API server
+cd backend && go run main.go
+
+# Terminal 3: Frontend
+cd frontend && bun run dev
 ```
 
 ### Root project (legacy Notion sync)
@@ -56,42 +71,59 @@ No test suite or linter for the root project.
 
 ### Backend (`backend/`)
 
-Independent `uv`-managed project (Python >=3.12). Four layers:
+Go (Gin) API server + Python (FastAPI) scraper microservice.
 
-**API layer** (`src/api.py`, `src/api/`):
-- FastAPI app with `AuthMiddleware` + CORS. Started via `uvicorn` on port 8000.
-- `POST /api/chat` -- streaming text response (mock LLM, character-by-character).
-- `POST /api/community/bind?action=...&platform=...` -- platform bind/unbind/status/refresh. Requires auth.
-- `POST /api/community/sync?platform=...` -- trigger data sync for a bound platform. Requires auth.
-- `WS /api/community/ws?token=...&platform=...` -- WebSocket push of binding/sync progress. Auth via query param.
-- `GET /api/community/data?platform=...` -- retrieve books, movies, notes, bookmarks, or memos for a platform. Requires auth.
-- Shared binding infrastructure in `src/api/base.py`: `BindTask` dataclass with `asyncio.Event`-based notification, and `supported_platforms()` helper.
-- Each platform has its own `BindManager` subclass in `src/api/`: `AsyncBindManager` for Douban (`douban.py`), `WereadBindManager` (`weread.py`), `FlomoBindManager` (`flomo.py`). They run Playwright login in a thread pool, notifying the WebSocket via `BindTask`.
+**Architecture:**
+```
+Frontend (React)  <-->  Go API Server (Gin, :8000)  <-->  PostgreSQL
+                            |
+                            +---> Redis (verification codes + JWT tokens)
+                            |
+                            +---> Python Scraper Service (FastAPI, :50051)
+                                    |
+                                    +---> Playwright (msedge)
+```
 
-**Auth layer** (`src/core/`):
-- JWT (HS256, 24h expiry, secret auto-generated or set in `config.yaml`) with bcrypt password hashing.
-- `AuthMiddleware` (`src/core/middleware.py`): validates Bearer token on all routes except whitelist (`/api/auth/*`, `/api/chat`, `/docs`). Injects `User` into `request.state.user`.
-- `AuthRepo` (`src/core/auth/repository.py`): user CRUD, soft delete.
-- Verification codes: 6-digit, 10min expiry, stored in **Redis** (`src/core/utils/redis.py`), not the database.
-- Auth routes (`src/core/auth/routes.py`): register -> email verification code -> verify+create account -> login returns JWT. Also `/me`, `/change-password`, `/delete`.
-- Email via `src/core/utils/email.py` using SMTP config from `config.yaml` (presets for qq, outlook, 163, 126, yeah).
-- `src/core/utils/config.py`: loads `config.yaml` (Pydantic model with `SmtpConfig`, `RedisConfig`, `jwt_secret`).
+**Go API Server** -- handles all HTTP/WebSocket, auth, email, Redis, PostgreSQL:
+- `main.go` -- entrypoint, wires all handlers and middleware
+- `internal/config/` -- YAML config loading (SMTP presets, Redis, PostgreSQL, JWT)
+- `internal/database/` -- Bun ORM + pgdriver PostgreSQL init, migrations, seed
+- `internal/middleware/` -- JWT auth middleware (whitelist + Bearer token) + CORS
+- `internal/ws/` -- WebSocket handler (subprotocol auth, task polling)
+- `internal/task/` -- BindTask coordination (in-memory map + channel notification)
+- `pkg/auth/` -- Auth handler (register/verify/login/mine/update-profile/change-password/delete), JWT service, user repo
+- `pkg/community/` -- Platform binding, sync orchestration, call Python scraper via HTTP/SSE
+- `pkg/data/` -- Data models (User, BookRow, MovieRow, etc.) + DataRepo (Bun ORM upsert/get)
+- `pkg/scraper/` -- HTTP client to Python scraper service (SSE stream parsing)
+- `pkg/chat/` -- Mock chat streaming handler
+- `pkg/email/` -- SMTP email sending with HTML template
+- `pkg/redis/` -- Redis operations (verification codes, JWT token storage)
+- `migrations/001_init.up.sql` -- PostgreSQL schema DDL
 
-**Scraper layer** (`src/community/`):
-- Platform identifiers are integer constants: `PLATFORM_DOUBAN=1`, `PLATFORM_WEREAD=2`, `PLATFORM_FLOMO=3` (defined in `db/models.py`).
-- **Douban** (`douban/`): `DoubanClient` uses Playwright for QR login + `requests.Session` for data scraping. Auto-detects `user_id` from `/mine/` redirect. `SessionManager` builds session from saved Playwright cookies.
-- **WeRead** (`weread/`): `WereadClient` uses full browser automation (`page.evaluate` + `fetch`) for API calls. Scrapers for shelf, bookmarks, and profile. Session restored from Playwright storage state.
-- **Flomo** (`flomo/`): `FlomoClient` uses browser automation to export notes/memos via Flomo's HTML export, parsed by `parser.py`. `SessionManager` restores from Playwright storage state.
-- `BaseScraper` (`douban/scrapers/base.py`): pagination base class. Subclasses implement `_url()` and `_parse_page()`.
-- Each data type has a Pydantic model and scraper: Book, Movie, Game, Review, Note, Profile (Douban); Book, Bookmark, Profile (WeRead); FlomoMemo (Flomo).
-- Default browser channel is `msedge`.
+**Python Scraper Service** (`backend/scraper/`):
+- FastAPI microservice on port 50051 (internal only, not exposed to frontend)
+- `server.py` -- 4 endpoints: `POST /bind` (SSE), `POST /sync` (SSE), `POST /refresh`, `GET /health`
+- Reuses existing `douban/`, `weread/`, `flomo/` scraper code
+- Returns scraped data via SSE events (no DB access -- Go writes to PostgreSQL)
+- Platform identifiers: `PLATFORM_DOUBAN=1`, `PLATFORM_WEREAD=2`, `PLATFORM_FLOMO=3`
 
-**Database layer** (`db/`):
-- SQLAlchemy async ORM over SQLite (`aiosqlite`). DB file: `backend/db/data/lifeink.db`.
-- `engine.py`: async engine, session factory, `init_db()`.
-- `models.py`: ORM models -- `PlatformRow` (platform enumeration), `User` (email, password_hash, name, avatar, bio, status, email_verified), `CommunityMeta` (platform binding + session state), `BookRow` (shared by Douban and WeRead, with `platform_id` and `external` JSON field), `MovieRow`, `GameRow`, `ReviewRow`, `NoteRow`, `BookmarkRow` (WeRead), `FlomoMemoRow` (Flomo, stores HTML content, tags, files). Row models have `to_api_dict()` and `to_pydantic()` methods. `change_hash()` on row models avoids unnecessary updates.
-- `repository.py`: `CommunityMetaRepo` (binding/session CRUD), `DataRepo` (upsert + get for each data type, using SQLite `ON CONFLICT DO UPDATE`; includes `upsert_flomo_memos`), `BookmarkRepo` (WeRead bookmarks), `AuthRepo` (user CRUD).
+**Database** (PostgreSQL):
+- Bun ORM with pgdriver. Schema in `migrations/001_init.up.sql`.
+- Tables: `platforms`, `users`, `community_meta`, `books`, `movies`, `games`, `reviews`, `notes`, `bookmarks`, `flomo_memos`
 - All `user_id` foreign keys reference `users.id` with `CASCADE` delete.
+- Models have `ToAPIDict()` methods for API responses. `ChangeHash()` on BookRow avoids unnecessary updates.
+
+**Redis**: Verification codes (`vc:{email}`, 10min TTL) + JWT tokens (`jwt:{user_id}`, 24h TTL) for server-side session management.
+
+**Migration tool** (`cmd/migrate/`): Reads SQLite (`db/data/lifeink.db`) -> writes PostgreSQL. Idempotent.
+
+**API endpoints** (unchanged from Python version):
+- `POST /api/auth` -- auth actions (register/verify/login/mine/update-profile/change-password/delete)
+- `POST /api/chat` -- streaming text response (mock LLM)
+- `POST /api/community/bind?action=...&platform=...` -- platform bind/unbind/status/refresh
+- `POST /api/community/sync?platform=...` -- trigger data sync
+- `WS /api/community/ws?token=...&platform=...` -- WebSocket progress (auth via subprotocol)
+- `GET /api/community/data?platform=all` -- retrieve all platform data
 
 ### Frontend (`frontend/`)
 
@@ -124,9 +156,9 @@ Bun-managed React 19 + TypeScript + Vite.
 ## Key Conventions
 
 - All Notion property names in JSON templates and code are Chinese.
-- The root scraper uses `requests`; the backend uses Playwright (for login) + `requests` (for scraping). They do not share code.
+- The root scraper uses `requests`; the Go backend delegates scraping to a Python microservice using Playwright. They do not share code.
 - `last mark/`, `.playwright/`, `.playwright-cli/`, `backend/db/data/`, and `tmp/` are gitignored (contain user-specific session data and databases).
-- `backend/config.yaml` is gitignored (contains SMTP credentials).
+- `backend/config.yaml` is gitignored (contains SMTP and PostgreSQL credentials).
 - Strictly prohibited from using emojis in code or comments.
 - All files created for temporary use shall be placed in the `tmp/` directory.
 - Creating .sh and other script files is prohibited.
@@ -152,12 +184,14 @@ All API endpoints use a **unified single-endpoint pattern**: one URL per domain,
 - `BOOK_ICON`, `VIDEO_ICON` -- icon URLs for Notion pages
 - `STAR` -- character used to display ratings
 
-`backend/config.yaml` (gitignored, for auth + Redis):
+`backend/config.yaml` (gitignored, for auth + Redis + PostgreSQL):
 
 - `smtp.provider` -- preset name (`qq`, `outlook`, `163`, `126`, `yeah`, `custom`)
 - `smtp.username`, `smtp.password` -- SMTP credentials
 - `redis.host`, `redis.port`, `redis.db`, `redis.password` -- Redis config (defaults to localhost:6379)
+- `postgres.host`, `postgres.port`, `postgres.user`, `postgres.password`, `postgres.dbname`, `postgres.sslmode` -- PostgreSQL config
 - `jwt_secret` -- JWT signing key (auto-generated if empty)
+- `scraper_url` -- Python scraper service address (defaults to `http://127.0.0.1:50051`)
 
 ## CI/CD
 

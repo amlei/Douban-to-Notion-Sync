@@ -1,0 +1,31 @@
+.input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sidebar);
+  transition: border-color 0.15s;
+}
+.input-wrap:focus-within {
+  border-color: var(--sky-400);
+}
+.input-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--text-light);
+}
+.input-field {
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 0.82rem;
+  color: var(--text);
+  width: 100%;
+  font-family: inherit;
+}
+.input-field::placeholder {
+  color: var(--text-light);
+  opacity: 0.6;
+}

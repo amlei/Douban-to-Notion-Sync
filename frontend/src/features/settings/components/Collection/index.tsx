@@ -1,11 +1,18 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Search, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, X } from "lucide-react";
+import { Button } from "../../../../components/Button";
+import { Input } from "../../../../components/Input";
+import { Select } from "../../../../components/Select";
+import { ScrollArea } from "../../../../components/ScrollArea";
 import "./Collection.css";
 import type { BookItem, MovieItem, NoteItem, BookmarkItem, MemoItem } from "../../../../types/community";
 
-const PAGE_SIZE = 10;
-
 type DataTabKey = "books" | "movies" | "notes" | "bookmarks" | "memos";
+
+type DetailItem =
+  | { type: "book"; data: BookItem }
+  | { type: "movie"; data: MovieItem }
+  | { type: "memo"; data: MemoItem };
 
 const SEARCH_PLACEHOLDERS: Record<DataTabKey, string> = {
   books: "搜索图书...",
@@ -98,6 +105,27 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
   const [sortBy, setSortBy] = useState("default");
   const [sortDir, setSortDir] = useState<1 | -1>(-1);
   const [page, setPage] = useState(1);
+  const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
+  const [detailClosing, setDetailClosing] = useState(false);
+
+  // Compute available tabs based on bindings, auto-select first if current is invalid
+  const availableTabs = useMemo((): DataTabKey[] => {
+    const tabs: DataTabKey[] = [];
+    if (doubanBound || wereadBound) tabs.push("books");
+    if (doubanBound) tabs.push("movies", "notes");
+    if (wereadBound) tabs.push("bookmarks");
+    if (flomoBound) tabs.push("memos");
+    return tabs;
+  }, [doubanBound, wereadBound, flomoBound]);
+
+  useEffect(() => {
+    if (availableTabs.length > 0 && !availableTabs.includes(dataTab)) {
+      setDataTab(availableTabs[0]);
+    }
+  }, [availableTabs, dataTab]);
+
+  const isGalleryTab = dataTab === "books" || dataTab === "movies" || dataTab === "memos";
+  const pageSize = isGalleryTab ? 30 : 10;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchText), 300);
@@ -114,6 +142,8 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
     setPlatformFilter("all");
     setSortBy("default");
     setSortDir(-1);
+    setDetailItem(null);
+    setDetailClosing(false);
   }, []);
 
   const noBinding = !doubanBound && !wereadBound && !flomoBound;
@@ -155,8 +185,15 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
     : afterPlatformFilter;
 
   const sorted = useMemo(() => {
-    if (sortBy === "default") return filtered;
     const d = sortDir;
+    if (sortBy === "default") {
+      if (dataTab === "memos") {
+        return [...filtered].sort((a, b) =>
+          compare((a as MemoItem).memo_created_at, (b as MemoItem).memo_created_at, -1)
+        );
+      }
+      return filtered;
+    }
     return [...filtered].sort((a, b) => {
       switch (dataTab) {
         case "books": {
@@ -195,9 +232,9 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
   }, [filtered, sortBy, sortDir, dataTab]);
 
   const totalCount = sorted.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const safePage = Math.min(page, totalPages);
-  const paged = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const paged = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const pageNumbers = useMemo(() => {
     if (totalPages <= 5) {
@@ -219,6 +256,22 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
   }, [safePage, totalPages]);
 
   const currentSortOptions = SORT_OPTIONS[dataTab];
+
+  const openDetail = (item: DetailItem) => {
+    setDetailClosing(false);
+    setDetailItem(item);
+  };
+
+  const closeDetail = () => {
+    setDetailClosing(true);
+  };
+
+  const handleDetailAnimEnd = () => {
+    if (detailClosing) {
+      setDetailItem(null);
+      setDetailClosing(false);
+    }
+  };
 
   if (noBinding) {
     return (
@@ -274,220 +327,367 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
       </div>
 
       <div className="data-toolbar">
-        <div className="data-search">
-          <Search size={14} />
-          <input
-            type="text"
-            placeholder={SEARCH_PLACEHOLDERS[dataTab]}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-          />
-        </div>
-        <select
-          className="data-sort"
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-        >
+        <Input
+          icon={<Search size={14} />}
+          type="text"
+          placeholder={SEARCH_PLACEHOLDERS[dataTab]}
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          style={{ flex: 1 }}
+        />
+        <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
           {currentSortOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
-        </select>
-        <button
-          className={`data-sort-dir ${sortBy !== "default" ? "" : "disabled"}`}
+        </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          icon={sortDir === 1 ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
           onClick={() => setSortDir((d) => (d === 1 ? -1 : 1) as 1 | -1)}
           disabled={sortBy === "default"}
           title={sortDir === 1 ? "升序" : "降序"}
-        >
-          {sortDir === 1 ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
-        </button>
+          className="sort-dir-color"
+        />
         {dataTab === "books" && (
-          <select
-            className="data-platform-filter"
+          <Select
             value={platformFilter}
             onChange={(e) => setPlatformFilter(e.target.value as "all" | "1" | "2")}
           >
             <option value="all">全部平台</option>
             <option value="1">豆瓣</option>
             <option value="2">微信读书</option>
-          </select>
+          </Select>
         )}
       </div>
 
-      <div className="data-list">
-        {dataTab === "books" && paged.map((item) => {
-          const b = item as BookItem;
-          const isWeread = b.platform_id === 2;
-          const bookKey = isWeread ? (b.book_id ?? b.url) : b.url;
-          const href = isWeread ? undefined : b.url;
-          const Wrapper = href ? "a" : "div";
-          return (
-            <Wrapper
-              key={bookKey}
-              {...(href ? { href, target: "_blank", rel: "noreferrer" } : {})}
-              className="data-item"
-            >
-              {b.cover && <img src={b.cover} alt="" className="data-item-cover" />}
-              <div className="data-item-info">
-                <span className="data-item-title">
-                  {b.title}
+      {isGalleryTab ? (
+        <div className={`gallery-grid${dataTab === "memos" ? " gallery-grid--memos" : ""}`}>
+          {dataTab === "books" && paged.map((item) => {
+            const b = item as BookItem;
+            const isWeread = b.platform_id === 2;
+            const bookKey = isWeread ? (b.book_id ?? b.url) : b.url;
+            const ratingText = isWeread && b.rating_detail
+              ? b.rating_detail
+              : b.rating ? "★".repeat(b.rating) : "";
+            return (
+              <div
+                key={bookKey}
+                className="gallery-card"
+                onClick={() => openDetail({ type: "book", data: b })}
+              >
+                <div className="gallery-cover-wrap">
+                  {b.cover ? (
+                    <img src={b.cover} alt="" className="gallery-cover" loading="lazy" />
+                  ) : (
+                    <div className="gallery-cover-placeholder">{b.title}</div>
+                  )}
                   <img
                     src={isWeread ? "/weread.webp" : "/douban.svg"}
                     alt=""
-                    style={{ height: 14, marginLeft: 6, verticalAlign: "middle", opacity: 0.7 }}
+                    className="gallery-card-platform"
                   />
-                </span>
-                <span className="data-item-meta">
-                  {b.author && `${b.author}`}
-                  {b.author && b.publisher && " / "}
-                  {b.publisher && `${b.publisher}`}
-                  {b.rating_detail && ` / ${b.rating_detail}`}
-                  {!isWeread && !b.rating_detail && b.rating && ` / ${"★".repeat(b.rating)}`}
-                </span>
-                {isWeread && (
-                  <span className="data-item-meta">
-                    {b.total_words && `${(b.total_words / 10000).toFixed(1)}万字`}
-                    {b.total_words && b.isbn && " / "}
-                    {b.isbn && `ISBN ${b.isbn}`}
-                    {b.status === "1" && " / 已读完"}
-                  </span>
-                )}
-                {!isWeread && b.tags && b.tags.length > 0 && (
-                  <div className="data-item-tags">
-                    {b.tags.map((t) => <span key={t} className="data-tag">{t}</span>)}
-                  </div>
-                )}
-              </div>
-            </Wrapper>
-          );
-        })}
-        {dataTab === "movies" && paged.map((item) => {
-          const m = item as MovieItem;
-          return (
-            <a key={m.url} href={m.url} target="_blank" rel="noreferrer" className="data-item">
-              {m.cover && <img src={m.cover} alt="" className="data-item-cover" />}
-              <div className="data-item-info">
-                <span className="data-item-title">{m.title}</span>
-                <span className="data-item-meta">
-                  {m.release_date && `${m.release_date}`}
-                  {m.rating && ` / ${"★".repeat(m.rating)}`}
-                </span>
-                {m.tags && m.tags.length > 0 && (
-                  <div className="data-item-tags">
-                    {m.tags.map((t) => <span key={t} className="data-tag">{t}</span>)}
-                  </div>
-                )}
-              </div>
-            </a>
-          );
-        })}
-        {dataTab === "notes" && paged.map((item, i) => {
-          const n = item as NoteItem;
-          return n.url ? (
-            <a key={n.url} href={n.url} target="_blank" rel="noreferrer" className="data-item">
-              <div className="data-item-info">
-                <span className="data-item-title">{n.title}</span>
-                <span className="data-item-meta">
-                  {n.date && n.date}
-                  {n.location && ` / ${n.location}`}
-                </span>
-              </div>
-            </a>
-          ) : (
-            <div key={`note-${i}`} className="data-item">
-              <div className="data-item-info">
-                <span className="data-item-title">{n.title}</span>
-                <span className="data-item-meta">
-                  {n.date && n.date}
-                  {n.location && ` / ${n.location}`}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-        {dataTab === "bookmarks" && paged.map((item, i) => {
-          const bm = item as BookmarkItem;
-          return (
-            <div key={bm.bookmark_id ?? `${bm.book_id}-${i}`} className="data-item" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
-                <span className="data-item-title" style={{ fontSize: "0.8rem", color: "var(--text-light)" }}>
-                  {bm.chapter_name ?? `第${bm.chapter_idx}章`}
-                </span>
-                <span className="data-item-meta">
-                  {bm.book_title}
-                </span>
-              </div>
-              <span style={{ fontSize: "0.85rem", lineHeight: 1.5, color: "var(--text)" }}>
-                {bm.mark_text}
-              </span>
-            </div>
-          );
-        })}
-        {dataTab === "memos" && paged.map((item, i) => {
-          const m = item as MemoItem;
-          return (
-            <div key={`${m.memo_created_at}-${i}`} className="data-item" style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
-                <span className="data-item-meta">
-                  {m.memo_created_at}
-                </span>
-                <img
-                  src="/flomoapp.svg"
-                  alt=""
-                  style={{ height: 14, verticalAlign: "middle", opacity: 0.7 }}
-                />
-              </div>
-              <div
-                style={{ fontSize: "0.85rem", lineHeight: 1.6, color: "var(--text)" }}
-                dangerouslySetInnerHTML={{ __html: m.content }}
-              />
-              {m.tags.length > 0 && (
-                <div className="data-item-tags">
-                  {m.tags.map((t) => <span key={t} className="data-tag">{t}</span>)}
                 </div>
-              )}
-            </div>
-          );
-        })}
+                <div className="gallery-info">
+                  <div className="gallery-card-title">{b.title}</div>
+                  <div className="gallery-card-meta">
+                    {b.author || ""}
+                    {b.author && ratingText ? " / " : ""}
+                    {ratingText}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {dataTab === "movies" && paged.map((item) => {
+            const m = item as MovieItem;
+            return (
+              <div
+                key={m.url}
+                className="gallery-card"
+                onClick={() => openDetail({ type: "movie", data: m })}
+              >
+                <div className="gallery-cover-wrap">
+                  {m.cover ? (
+                    <img src={m.cover} alt="" className="gallery-cover" loading="lazy" />
+                  ) : (
+                    <div className="gallery-cover-placeholder">{m.title}</div>
+                  )}
+                </div>
+                <div className="gallery-info">
+                  <div className="gallery-card-title">{m.title}</div>
+                  <div className="gallery-card-meta">
+                    {m.release_date ? m.release_date.slice(0, 4) : ""}
+                    {m.release_date && m.rating ? " / " : ""}
+                    {m.rating ? "★".repeat(m.rating) : ""}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {dataTab === "memos" && paged.map((item, i) => {
+            const m = item as MemoItem;
+            return (
+              <div
+                key={`${m.memo_created_at}-${i}`}
+                className="gallery-memo-card"
+                onClick={() => openDetail({ type: "memo", data: m })}
+              >
+                <div className="gallery-memo-text">{stripHtml(m.content)}</div>
+                <div className="gallery-memo-footer">
+                  <span className="gallery-memo-date">
+                    {m.memo_created_at.length >= 10 ? m.memo_created_at.slice(0, 10) : m.memo_created_at}
+                  </span>
+                  {m.tags.length > 0 && (
+                    <div className="gallery-memo-tags">
+                      {m.tags.slice(0, 2).map((t) => <span key={t} className="data-tag">{t}</span>)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="data-list">
+          {dataTab === "notes" && paged.map((item, i) => {
+            const n = item as NoteItem;
+            return n.url ? (
+              <a key={n.url} href={n.url} target="_blank" rel="noreferrer" className="data-item">
+                <div className="data-item-info">
+                  <span className="data-item-title">{n.title}</span>
+                  <span className="data-item-meta">
+                    {n.date && n.date}
+                    {n.location && ` / ${n.location}`}
+                  </span>
+                </div>
+              </a>
+            ) : (
+              <div key={`note-${i}`} className="data-item">
+                <div className="data-item-info">
+                  <span className="data-item-title">{n.title}</span>
+                  <span className="data-item-meta">
+                    {n.date && n.date}
+                    {n.location && ` / ${n.location}`}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          {dataTab === "bookmarks" && paged.map((item, i) => {
+            const bm = item as BookmarkItem;
+            return (
+              <div key={bm.bookmark_id ?? `${bm.book_id}-${i}`} className="data-item" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
+                  <span className="data-item-title" style={{ fontSize: "0.8rem", color: "var(--text-light)" }}>
+                    {bm.chapter_name ?? `第${bm.chapter_idx}章`}
+                  </span>
+                  <span className="data-item-meta">
+                    {bm.book_title}
+                  </span>
+                </div>
+                <span style={{ fontSize: "0.85rem", lineHeight: 1.5, color: "var(--text)" }}>
+                  {bm.mark_text}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-        {totalCount === 0 && (
-          <p className="panel-modal-desc">
-            {debouncedSearch
-              ? "没有匹配的搜索结果。"
-              : emptyHint(dataTab)}
-          </p>
-        )}
-      </div>
+      {totalCount === 0 && (
+        <p className="panel-modal-desc">
+          {debouncedSearch
+            ? "没有匹配的搜索结果。"
+            : emptyHint(dataTab)}
+        </p>
+      )}
 
       {totalPages > 1 && (
         <div className="data-pagination">
-          <button
-            className="page-btn"
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<ChevronLeft size={14} />}
             disabled={safePage <= 1}
             onClick={() => setPage(safePage - 1)}
-          >
-            <ChevronLeft size={14} />
-          </button>
+          />
           {pageNumbers.map((p, i) =>
             p === "..." ? (
               <span key={`ellipsis-${i}`} className="page-ellipsis">...</span>
             ) : (
-              <button
+              <Button
                 key={p}
-                className={`page-btn ${p === safePage ? "active" : ""}`}
+                variant="outline"
+                size="sm"
+                active={p === safePage}
                 onClick={() => setPage(p)}
               >
                 {p}
-              </button>
+              </Button>
             )
           )}
-          <button
-            className="page-btn"
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<ChevronRight size={14} />}
             disabled={safePage >= totalPages}
             onClick={() => setPage(safePage + 1)}
-          >
-            <ChevronRight size={14} />
-          </button>
+          />
           <span className="page-info">共 {totalCount} 项</span>
+        </div>
+      )}
+
+      {detailItem && (
+        <div
+          className={`gallery-detail-overlay${detailClosing ? " closing" : ""}`}
+          onClick={(e) => { if (e.target === e.currentTarget) closeDetail(); }}
+          onAnimationEnd={handleDetailAnimEnd}
+        >
+          <ScrollArea className="gallery-detail-modal">
+            <Button
+              variant="ghost"
+              shape="circle"
+              icon={<X size={16} />}
+              className="gallery-detail-close"
+              onClick={closeDetail}
+            />
+            {detailItem.type === "book" && (
+              <div className="gallery-detail-body">
+                <div className="gallery-detail-cover-row">
+                  {detailItem.data.cover ? (
+                    <img src={detailItem.data.cover} alt="" className="gallery-detail-cover" />
+                  ) : (
+                    <div className="gallery-detail-cover-placeholder">无封面</div>
+                  )}
+                  <div className="gallery-detail-fields">
+                    <div className="gallery-detail-title">{detailItem.data.title}</div>
+                    {(detailItem.data.rating || detailItem.data.rating_detail) && (
+                      <div className="gallery-detail-rating">
+                        {detailItem.data.platform_id === 2 && detailItem.data.rating_detail
+                          ? detailItem.data.rating_detail
+                          : detailItem.data.rating
+                            ? "★".repeat(detailItem.data.rating) + "☆".repeat(5 - detailItem.data.rating)
+                            : ""}
+                      </div>
+                    )}
+                    {detailItem.data.author && (
+                      <div className="gallery-detail-field">作者: <span>{detailItem.data.author}</span></div>
+                    )}
+                    {detailItem.data.publisher && (
+                      <div className="gallery-detail-field">出版社: <span>{detailItem.data.publisher}</span></div>
+                    )}
+                    {detailItem.data.pub_date && (
+                      <div className="gallery-detail-field">出版日期: <span>{detailItem.data.pub_date}</span></div>
+                    )}
+                    {detailItem.data.price && (
+                      <div className="gallery-detail-field">价格: <span>{detailItem.data.price}</span></div>
+                    )}
+                    {detailItem.data.read_date && (
+                      <div className="gallery-detail-field">阅读日期: <span>{detailItem.data.read_date}</span></div>
+                    )}
+                    {detailItem.data.platform_id === 2 && detailItem.data.total_words != null && (
+                      <div className="gallery-detail-field">字数: <span>{(detailItem.data.total_words / 10000).toFixed(1)}万字</span></div>
+                    )}
+                    {detailItem.data.platform_id === 2 && detailItem.data.isbn && (
+                      <div className="gallery-detail-field">ISBN: <span>{detailItem.data.isbn}</span></div>
+                    )}
+                    {detailItem.data.platform_id === 2 && detailItem.data.category && (
+                      <div className="gallery-detail-field">分类: <span>{detailItem.data.category}</span></div>
+                    )}
+                    <div className="gallery-detail-field">
+                      来源: <span>{detailItem.data.platform_id === 2 ? "微信读书" : "豆瓣"}</span>
+                    </div>
+                  </div>
+                </div>
+                {detailItem.data.tags && detailItem.data.tags.length > 0 && (
+                  <div className="gallery-detail-tags">
+                    {detailItem.data.tags.map((t) => <span key={t} className="gallery-detail-tag">{t}</span>)}
+                  </div>
+                )}
+                {detailItem.data.comment && (
+                  <div className="gallery-detail-comment">
+                    <div className="gallery-detail-comment-label">评论</div>
+                    {detailItem.data.comment}
+                  </div>
+                )}
+                {detailItem.data.platform_id !== 2 && detailItem.data.url && (
+                  <a href={detailItem.data.url} target="_blank" rel="noreferrer" className="gallery-detail-link">
+                    查看豆瓣页面
+                  </a>
+                )}
+              </div>
+            )}
+            {detailItem.type === "movie" && (
+              <div className="gallery-detail-body">
+                <div className="gallery-detail-cover-row">
+                  {detailItem.data.cover ? (
+                    <img src={detailItem.data.cover} alt="" className="gallery-detail-cover" />
+                  ) : (
+                    <div className="gallery-detail-cover-placeholder">无封面</div>
+                  )}
+                  <div className="gallery-detail-fields">
+                    <div className="gallery-detail-title">{detailItem.data.title}</div>
+                    {detailItem.data.rating && (
+                      <div className="gallery-detail-rating">
+                        {"★".repeat(detailItem.data.rating)}{"☆".repeat(5 - detailItem.data.rating)}
+                      </div>
+                    )}
+                    {detailItem.data.release_date && (
+                      <div className="gallery-detail-field">上映日期: <span>{detailItem.data.release_date}</span></div>
+                    )}
+                    {detailItem.data.watch_date && (
+                      <div className="gallery-detail-field">观影日期: <span>{detailItem.data.watch_date}</span></div>
+                    )}
+                  </div>
+                </div>
+                {detailItem.data.tags && detailItem.data.tags.length > 0 && (
+                  <div className="gallery-detail-tags">
+                    {detailItem.data.tags.map((t) => <span key={t} className="gallery-detail-tag">{t}</span>)}
+                  </div>
+                )}
+                {detailItem.data.comment && (
+                  <div className="gallery-detail-comment">
+                    <div className="gallery-detail-comment-label">评论</div>
+                    {detailItem.data.comment}
+                  </div>
+                )}
+                {detailItem.data.url && (
+                  <a href={detailItem.data.url} target="_blank" rel="noreferrer" className="gallery-detail-link">
+                    查看豆瓣页面
+                  </a>
+                )}
+              </div>
+            )}
+            {detailItem.type === "memo" && (
+              <div className="gallery-detail-body">
+                <div className="gallery-detail-meta-row">
+                  <span className="gallery-detail-date">{detailItem.data.memo_created_at}</span>
+                  <img
+                    src="/flomoapp.svg"
+                    alt=""
+                    style={{ height: 14, verticalAlign: "middle", opacity: 0.7 }}
+                  />
+                </div>
+                <div
+                  className="gallery-detail-memo-content"
+                  dangerouslySetInnerHTML={{ __html: detailItem.data.content }}
+                />
+                {detailItem.data.tags.length > 0 && (
+                  <div className="gallery-detail-tags">
+                    {detailItem.data.tags.map((t) => <span key={t} className="gallery-detail-tag">{t}</span>)}
+                  </div>
+                )}
+                {detailItem.data.files.length > 0 && (
+                  <div className="gallery-detail-files">
+                    {detailItem.data.files.map((f, i) => (
+                      <img key={i} src={f} alt="" className="gallery-detail-file-img" loading="lazy" />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </ScrollArea>
         </div>
       )}
     </div>

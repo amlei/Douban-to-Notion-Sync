@@ -25,7 +25,7 @@ function writeMeta(m: Record<string, PlatformMeta>) {
   localStorage.setItem(META_KEY, JSON.stringify(m));
 }
 
-function saveBinding(platform: string, bound: boolean, profile?: PlatformProfile | null) {
+export function saveBinding(platform: string, bound: boolean, profile?: PlatformProfile | null) {
   const m = readMeta();
   const entry = m[platform] ?? { bound: false };
   entry.bound = bound;
@@ -108,7 +108,7 @@ export function usePlatformBinding(
     try {
       await startBinding(platform);
       wsRef.current = connectBindWs(platform, {
-        onQr: (base64) => callbacks.onQr(`data:image/png;base64,${base64}`),
+        onQr: (base64) => callbacks.onQr(base64),
         onStatus: (status) => {
           setBindPhase(status);
           if (status === "scanned") callbacks.onQr(null);

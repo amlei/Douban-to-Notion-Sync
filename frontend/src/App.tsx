@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { PanelRightOpen } from "lucide-react";
 import { useChatStore } from "./hooks/useChatStore";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
 import { GlobalModalsProvider } from "./features/modals";
 import { Sidebar } from "./components/Sidebar";
 import { WelcomeScreen } from "./components/WelcomeScreen";
@@ -84,10 +85,12 @@ function AppInner() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <GlobalModalsProvider>
-        <AppInner />
-      </GlobalModalsProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <GlobalModalsProvider>
+          <AppInner />
+        </GlobalModalsProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

@@ -3,6 +3,7 @@ import "../../../components/PanelModal/modal-base.css";
 import "../shared.css";
 import "./LoginModal.css";
 import { X, Loader2, Mail, Lock, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Button } from "../../../components/Button";
 import { useAuth } from "../../../contexts/AuthContext";
 import { getPasswordStrength } from "../../../utils/password";
 import type { StrengthLevel } from "../../../utils/password";
@@ -21,6 +22,21 @@ export const STRENGTH_LABELS: Record<StrengthLevel, string> = {
   3: "强",
 };
 import { useGlobalModals } from "../../modals";
+import { checkAllBindings, getAllCommunityData } from "../../../api/community";
+import { setCommunityData, saveBinding } from "../../settings/hooks/usePlatformBinding";
+
+async function prefetchCommunityData() {
+  try {
+    const [bindings, allData] = await Promise.all([checkAllBindings(), getAllCommunityData()]);
+    for (const [pf, d] of Object.entries(allData)) {
+      const status = bindings[pf];
+      if (status?.bound) {
+        saveBinding(pf, true, status.profile);
+        setCommunityData(pf, d);
+      }
+    }
+  } catch { /* ignore */ }
+}
 
 function StrengthBar({ level }: { level: StrengthLevel }) {
   const colors = STRENGTH_COLORS[level];
@@ -61,6 +77,8 @@ export function LoginModal() {
     setAuthLoading(true);
     try {
       await login(authEmail, authPassword);
+      closeLogin();
+      prefetchCommunityData();
     } catch (e: any) {
       setAuthError(e.message);
     }
@@ -96,6 +114,8 @@ export function LoginModal() {
     setAuthLoading(true);
     try {
       await verifyAndCreate(authEmail, authCode, authPassword);
+      closeLogin();
+      prefetchCommunityData();
     } catch (e: any) {
       setAuthError(e.message);
     }
@@ -107,9 +127,7 @@ export function LoginModal() {
       <div className="modal auth-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{authView === "login" ? "登录" : "注册"}</h2>
-          <button className="modal-close" onClick={closeLogin}>
-            <X size={22} />
-          </button>
+          <Button icon={<X size={22} />} onClick={closeLogin} />
         </div>
         <div className="auth-form">
           {authError && <p className="auth-error">{authError}</p>}

@@ -1,0 +1,51 @@
+/* Key-value row list (shared with AccountManage style) */
+.settings-kv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 16px;
+}
+
+/* Clickable row variant */
+.settings-kv-row-clickable {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  transition: color 0.15s;
+}
+
+.settings-kv-row-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-kv-icon {
+  color: var(--sky-600);
+  flex-shrink: 0;
+}
+
+.settings-kv-row-label {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.settings-kv-row-desc {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-light);
+  margin-top: 2px;
+}
+
+.settings-kv-arrow {
+  color: var(--text-light);
+  flex-shrink: 0;
+}

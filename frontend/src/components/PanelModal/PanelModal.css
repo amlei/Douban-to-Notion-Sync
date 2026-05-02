@@ -15,7 +15,7 @@
 .panel-modal-tabs {
   width: auto;
   min-width: 0;
-  padding: 12px;
+  padding: 4px 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -46,61 +46,21 @@
 /* Content area */
 .panel-modal-content {
   flex: 1;
-  padding: 24px 28px;
-  overflow-y: auto;
-}
-.panel-modal-content::-webkit-scrollbar {
-  width: 5px;
-}
-.panel-modal-content::-webkit-scrollbar-track {
-  background: transparent;
-}
-.panel-modal-content::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
-.panel-modal-content::-webkit-scrollbar-thumb:hover {
-  background: var(--text-light);
+  padding: 4px 28px 16px;
 }
 
 /* Full-panel mode: content fills remaining space */
 .panel-modal-full {
   flex: 1;
   min-height: 0;
-  padding: 0 28px 24px;
-  overflow-y: auto;
-}
-.panel-modal-full::-webkit-scrollbar {
-  width: 5px;
-}
-.panel-modal-full::-webkit-scrollbar-track {
-  background: transparent;
-}
-.panel-modal-full::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
-.panel-modal-full::-webkit-scrollbar-thumb:hover {
-  background: var(--text-light);
+  padding: 0 28px 16px;
 }
 
-/* Back button in modal header */
-.panel-modal-back {
-  display: inline-flex;
+/* Header left group (back + title) */
+.modal-header-left {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: none;
-  border-radius: var(--radius);
-  background: none;
-  color: var(--text-light);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.panel-modal-back:hover {
-  background: var(--sky-50);
-  color: var(--text);
+  gap: 8px;
 }
 
 /* Shared content styles */

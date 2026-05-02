@@ -111,7 +111,7 @@ class FlomoClient:
             self._notify("logged_in")
             return
 
-        self._start_browser()
+        self._start_browser(accept_downloads=True)
         self._page.goto(BASE_URL)  # type: ignore[union-attr]
         self._page.wait_for_load_state("domcontentloaded")  # type: ignore[union-attr]
 

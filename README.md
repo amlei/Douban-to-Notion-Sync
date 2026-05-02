@@ -30,13 +30,14 @@ LifeInk AI 从豆瓣、微信读书、Flomo 等平台采集个人的阅读、影
 - [x] 增量同步至 Notion 数据库
 - [x] 自动登录检测（session 过期弹二维码）
 - [x] 翻页数据提取、图标/封面/评分
-- [x] 本地 SQLite 数据库存储（SQLAlchemy async）
+- [x] 本地 SQLite 数据库存储 -> PostgreSQL 存储（Bun ORM）
 - [x] 绑定后自动抓取数据
 
 ### AI Agent
 
 - [x] 前端聊天界面（React + Vite）
 - [x] 流式响应（StreamingResponse + AI SDK）
+- [x] Go API Server (Gin) + Python Scraper 微服务架构
 - [ ] 开发 AI Agent
 
 ---
@@ -51,22 +52,24 @@ function/
 json/                # Notion 数据库模板
 icon/                # 页面图标
 
-backend/             # API 服务 + 数据抓取（uv 独立项目）
-  src/api.py         # FastAPI 应用（路由、WebSocket）
-  src/api/           # 平台绑定管理器
-    douban.py        # 豆瓣 AsyncBindManager
-    weread.py        # 微信读书 WereadBindManager
-    flomo.py         # Flomo FlomoBindManager
-  src/core/          # 认证与基础设施
-    auth/            # JWT 认证（注册/登录/验证码/密码重置）
-    middleware.py    # AuthMiddleware（全局 JWT 校验）
-    utils/           # 配置加载、邮件发送、Redis
-  src/community/     # 社区数据源
-    douban/          # 豆瓣（Playwright 登录 + requests 抓取）
-    weread/          # 微信读书（Playwright 浏览器自动化）
-    flomo/           # Flomo（Playwright 浏览器自动化 + HTML 导出解析）
-  db/                # SQLAlchemy 异步数据库层（SQLite）
-  tests/             # pytest 测试
+backend/             # API 服务 + 数据抓取
+  main.go           # Go API Server (Gin) 入口
+  internal/         # 基础设施（config, middleware, websocket, task, database）
+  pkg/              # 业务逻辑
+    auth/           # JWT 认证（注册/登录/验证码/密码重置）
+    community/      # 平台绑定、同步编排
+    data/           # 数据模型 + PostgreSQL CRUD（Bun ORM）
+    scraper/        # Python Scraper HTTP 客户端（SSE 解析）
+    chat/           # AI 聊天处理器
+    email/          # SMTP 邮件发送
+    redis/          # Redis 操作（验证码、JWT）
+  scraper/          # Python Scraper 微服务（FastAPI）
+    server.py       # FastAPI 应用（bind/sync/refresh/health）
+    douban/         # 豆瓣（Playwright 登录 + requests 抓取）
+    weread/         # 微信读书（Playwright 浏览器自动化）
+    flomo/          # Flomo（Playwright 浏览器自动化 + HTML 导出解析）
+  migrations/       # PostgreSQL schema DDL
+  cmd/migrate/      # SQLite -> PostgreSQL 迁移工具
 
 frontend/            # React 聊天界面（Bun + Vite）
   src/api/           # API 集成（auth.ts, community.ts）
@@ -87,25 +90,35 @@ frontend/            # React 聊天界面（Bun + Vite）
 ### 一键启动
 
 ```bash
-./start.sh
+# 终端 1: Python Scraper 微服务
+cd backend/scraper
+pip install -r requirements.txt
+python -m playwright install chromium  # 首次
+uvicorn server:app --port 50051
+
+# 终端 2: Go API 服务器
+cd backend
+cp config-example.yaml config.yaml    # 配置 SMTP/Redis/PostgreSQL
+go run main.go
+
+# 终端 3: 前端
+cd frontend
+bun install
+bun run dev
 ```
 
 启动后：
 - 前端: http://localhost:5173
 - 后端: http://localhost:8000
-- API 文档: http://localhost:8000/docs
+- Scraper: http://localhost:50051/health
 
 ### 后端单独启动
 
 ```bash
 cd backend
-uv sync
-uv run python -m playwright install chromium  # 首次
-cp config-example.yaml config.yaml            # 配置 SMTP（注册功能需要）
-uv run python src/api.py
+cp config-example.yaml config.yaml            # 配置 SMTP/Redis/PostgreSQL（注册功能需要 SMTP）
+go run main.go
 ```
-
-详见 [backend/README.md](./backend/README.md)。
 
 ### Notion 同步（原有功能）
 
@@ -146,6 +159,15 @@ python main.py
 - [ ] 阅读趋势图表（月度/年度）
 - [ ] 书影音评分分布
 - [ ] 标签词云与分类统计
+
+### Phase 5 - 微信小程序
+
+- [ ] 小程序项目初始化（原生 / Taro / uni-app）
+- [ ] 微信登录（code2session + 后端 user 绑定）
+- [ ] 数据看板页面（书影音统计、时间线）
+- [ ] AI 对话页面（流式响应适配小程序 WebSocket）
+- [ ] 平台绑定流程（小程序内扫码或跳转）
+- [ ] 小程序发布与审核
 
 ---
 

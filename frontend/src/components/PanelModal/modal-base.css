@@ -37,27 +37,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px;
+  padding: 14px 24px;
 }
 .modal-header h2 {
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--text);
   margin: 0;
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-light);
-  padding: 6px;
-  border-radius: 6px;
-  display: flex;
-}
-.modal-close:hover {
-  background: var(--sky-50);
-  color: var(--text);
 }
 
 .modal-body {

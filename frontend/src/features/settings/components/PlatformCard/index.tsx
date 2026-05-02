@@ -20,10 +20,14 @@ export function PlatformCard({ platform, icon, iconRounded, label, binding, data
 
   const syncPhaseLabels: Record<string, string> = platform === "douban"
     ? { books: "正在同步图书...", movies: "正在同步影视..." }
+    : platform === "flomo"
+    ? { exported: "正在下载导出文件...", parsed: "正在解析备忘录..." }
     : { books: "正在同步图书...", bookmarks: "正在同步笔记..." };
 
   const bindPhaseLabels: Record<string, string> = platform === "douban"
     ? { books: "正在导入图书...", movies: "正在导入影视..." }
+    : platform === "flomo"
+    ? { exported: "正在下载导出文件...", parsed: "正在解析备忘录..." }
     : { books: "正在导入图书...", bookmarks: "正在导入笔记..." };
 
   return (

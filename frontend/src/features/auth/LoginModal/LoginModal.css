@@ -45,7 +45,7 @@
   justify-content: space-between;
   padding: 16px 20px 0;
 }
-.pw-modal-header h3 {
+.pw-modal-header .pw-modal-title {
   font-size: 1rem;
   font-weight: 600;
   color: var(--text);

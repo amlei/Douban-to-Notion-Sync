@@ -1,4 +1,6 @@
 import { X, ArrowLeft } from "lucide-react";
+import { Button } from "../Button";
+import { ScrollArea } from "../ScrollArea";
 import "./modal-base.css";
 import "./PanelModal.css";
 import type { PanelItem } from "./types";
@@ -16,8 +18,9 @@ export function PanelModal({ title, panels, activePanel, onPanelChange, onClose,
   const current = panels.find((p) => p.id === activePanel);
   const isFullPanel = current?.fullPanel === true;
 
-  // Back button returns to the first non-fullPanel entry
-  const homeId = panels.find((p) => !p.fullPanel)?.id ?? panels[0]?.id;
+  // Back button returns to returnTo if set, otherwise the first non-fullPanel entry
+  const homeId = current?.returnTo ?? panels.find((p) => !p.fullPanel)?.id ?? panels[0]?.id;
+  const visiblePanels = panels.filter((p) => !p.hidden);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -25,33 +28,29 @@ export function PanelModal({ title, panels, activePanel, onPanelChange, onClose,
         {isFullPanel ? (
           <>
             <div className="modal-header">
-              <button
-                className="panel-modal-back"
-                onClick={() => onPanelChange(homeId)}
-                title={`返回${title}`}
-              >
-                <ArrowLeft size={18} />
-              </button>
-              <h2>{current!.label}</h2>
-              <button className="modal-close" onClick={onClose}>
-                <X size={22} />
-              </button>
+              <div className="modal-header-left">
+                <Button
+                  icon={<ArrowLeft size={18} />}
+                  onClick={() => onPanelChange(homeId)}
+                  title={`返回${title}`}
+                />
+                <h2>{current!.label}</h2>
+              </div>
+              <Button icon={<X size={22} />} onClick={onClose} />
             </div>
-            <div className="panel-modal-full">
+            <ScrollArea className="panel-modal-full">
               {children}
-            </div>
+            </ScrollArea>
           </>
         ) : (
           <>
             <div className="modal-header">
               <h2>{title}</h2>
-              <button className="modal-close" onClick={onClose}>
-                <X size={22} />
-              </button>
+              <Button icon={<X size={22} />} onClick={onClose} />
             </div>
             <div className="panel-modal-layout">
               <nav className="panel-modal-tabs">
-                {panels.map((panel) => {
+                {visiblePanels.map((panel) => {
                   const Icon = panel.icon;
                   return (
                     <button
@@ -65,9 +64,9 @@ export function PanelModal({ title, panels, activePanel, onPanelChange, onClose,
                   );
                 })}
               </nav>
-              <div className="panel-modal-content">
+              <ScrollArea className="panel-modal-content">
                 {children}
-              </div>
+              </ScrollArea>
             </div>
           </>
         )}

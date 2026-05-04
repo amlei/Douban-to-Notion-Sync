@@ -5,6 +5,11 @@ import { useChat } from "@ai-sdk/react";
 import { TextStreamChatTransport } from "ai";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Message,
+  MessageContent,
+  MessageResponse,
+} from "@/components/ai-elements/message";
 import { useChatStore } from "@/core/chat/use-chat-store";
 
 const transport = new TextStreamChatTransport({

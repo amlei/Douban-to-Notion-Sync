@@ -8,8 +8,6 @@ from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
 
 from . import BASE_URL
 from .login import FlomoLogin
-from .models import FlomoMemo
-from .parser import parse_export
 from .session import SessionManager
 
 log = logging.getLogger("flomo")
@@ -21,14 +19,14 @@ QrCallback = Callable[[bytes], None]
 class FlomoClient:
     """Flomo data client.
 
-    First-time flow:  ensure_ready() -> login (browser stays open) -> export_notes() -> close.
-    Subsequent flow:  ensure_ready() -> skip (session valid) -> export_notes() -> open browser -> export -> close.
+    First-time flow:  ensure_ready() -> login (browser stays open) -> download_export() -> close.
+    Subsequent flow:  ensure_ready() -> skip (session valid) -> download_export() -> open browser -> export -> close.
 
     Usage::
 
         with FlomoClient() as client:
             client.ensure_ready()
-            zip_path = client.export_notes()
+            zip_path = client.download_export()
     """
 
     def __init__(
@@ -105,7 +103,7 @@ class FlomoClient:
     def ensure_ready(self) -> None:
         """Ensure session is valid. Login via QR if needed.
 
-        After login the browser stays open so export_notes() can reuse it.
+        After login the browser stays open so download_export() can reuse it.
         """
         if self._session.has_valid_session:
             self._notify("logged_in")
@@ -136,8 +134,8 @@ class FlomoClient:
     # Export
     # ------------------------------------------------------------------
 
-    def export_notes(self, save_dir: str | None = None) -> list[FlomoMemo]:
-        """Export all notes: download zip from browser, parse, clean up."""
+    def download_export(self, save_dir: str | None = None) -> Path:
+        """Download flomo export zip via browser. Returns zip path (caller should clean up)."""
         if not self._session.has_valid_session:
             raise RuntimeError("No valid session -- call ensure_ready() first")
 
@@ -147,7 +145,6 @@ class FlomoClient:
         out_dir.mkdir(parents=True, exist_ok=True)
         log.info("[export] save_dir=%s, page=%s", out_dir, self._page is not None)
 
-        # Open new browser only if login didn't leave one running
         if not self._page:
             self._start_browser(accept_downloads=True)
 
@@ -213,10 +210,4 @@ class FlomoClient:
         finally:
             self._close_browser()
 
-        # Parse zip and clean up
-        memos = parse_export(zip_path)
-        log.info("[export] Parsed %d memos from zip", len(memos))
-        zip_path.unlink(missing_ok=True)
-        self._notify("parsed")
-        return memos
-
+        return zip_path

@@ -1,15 +1,14 @@
 package auth
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/uptrace/bun"
 
 	"github.com/lifeink-ai/backend/internal/database"
-	"github.com/lifeink-ai/backend/pkg/data"
-	pkgRedis "github.com/lifeink-ai/backend/pkg/redis"
 )
 
 type AuthHandler struct {
@@ -43,6 +42,18 @@ func (h *AuthHandler) handle(c *gin.Context) {
 		return
 	}
 
+	// Actions that require an authenticated user
+	authedActions := map[string]bool{
+		"mine": true, "update-profile": true, "change-password": true,
+		"logout": true, "delete": true,
+	}
+	if authedActions[req.Action] {
+		if err := h.authenticateRequest(c); err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"detail": err.Error()})
+			return
+		}
+	}
+
 	switch req.Action {
 	case "register":
 		h.register(c, &req)
@@ -56,11 +67,48 @@ func (h *AuthHandler) handle(c *gin.Context) {
 		h.updateProfile(c, &req)
 	case "change-password":
 		h.changePassword(c, &req)
+	case "logout":
+		h.logout(c)
 	case "delete":
 		h.deleteAccount(c)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "未知操作: " + req.Action})
 	}
+}
+
+func (h *AuthHandler) authenticateRequest(c *gin.Context) error {
+	tokenStr := ""
+	if cookie, err := c.Cookie("access_token"); err == nil && cookie != "" {
+		tokenStr = cookie
+	} else {
+		header := c.GetHeader("Authorization")
+		if strings.HasPrefix(header, "Bearer ") {
+			tokenStr = header[7:]
+		}
+	}
+	if tokenStr == "" {
+		return fmt.Errorf("Missing token")
+	}
+
+	claims, err := DecodeAccessToken(tokenStr)
+	if err != nil {
+		return fmt.Errorf("Invalid token")
+	}
+
+	pkFloat, ok := claims["pk"].(float64)
+	if !ok {
+		return fmt.Errorf("Invalid token")
+	}
+	pk := int64(pkFloat)
+
+	user := &User{}
+	err = GetDB().NewSelect().Model(user).Where("id = ?", pk).Scan(c.Request.Context())
+	if err != nil || user.Status != "active" {
+		return fmt.Errorf("User not found")
+	}
+
+	SetUser(c, user)
+	return nil
 }
 
 func (h *AuthHandler) register(c *gin.Context, req *authRequest) {
@@ -77,12 +125,12 @@ func (h *AuthHandler) register(c *gin.Context, req *authRequest) {
 	}
 
 	code := GenerateVerificationCode()
-	if err := pkgRedis.StoreCode(c.Request.Context(), email, code); err != nil {
+	if err := database.StoreCode(c.Request.Context(), email, code); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "存储验证码失败"})
 		return
 	}
 
-	if err := sendEmailAsync(email, code); err != nil {
+	if err := sendVerificationCode(email, code); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "邮件发送失败，请检查 SMTP 配置"})
 		return
 	}
@@ -102,7 +150,7 @@ func (h *AuthHandler) verify(c *gin.Context, req *authRequest) {
 		return
 	}
 
-	valid, _ := pkgRedis.VerifyCode(c.Request.Context(), email, code)
+	valid, _ := database.VerifyCode(c.Request.Context(), email, code)
 	if !valid {
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "验证码无效或已过期"})
 		return
@@ -120,7 +168,8 @@ func (h *AuthHandler) verify(c *gin.Context, req *authRequest) {
 		return
 	}
 
-	pkgRedis.StoreJWT(c.Request.Context(), user.UserID, token)
+	database.StoreJWT(c.Request.Context(), user.UserID, token)
+	c.SetCookie("access_token", token, 86400, "/", "", false, true)
 	tips := CheckPasswordStrength(password)
 	response := gin.H{
 		"access_token": token,
@@ -151,15 +200,29 @@ func (h *AuthHandler) login(c *gin.Context, req *authRequest) {
 		return
 	}
 
-	pkgRedis.StoreJWT(c.Request.Context(), user.UserID, token)
+	database.StoreJWT(c.Request.Context(), user.UserID, token)
+	c.SetCookie("access_token", token, 86400, "/", "", false, true)
 	c.JSON(http.StatusOK, gin.H{
 		"access_token": token,
 		"user":         user.ToAPIDict(),
 	})
 }
 
+func (h *AuthHandler) logout(c *gin.Context) {
+	header := c.GetHeader("Authorization")
+	if strings.HasPrefix(header, "Bearer ") {
+		if claims, err := DecodeAccessToken(header[7:]); err == nil {
+			if sub, ok := claims["sub"].(string); ok {
+				database.DeleteJWT(c.Request.Context(), sub)
+			}
+		}
+	}
+	c.SetCookie("access_token", "", -1, "/", "", false, true)
+	c.JSON(http.StatusOK, gin.H{"message": "已退出"})
+}
+
 func (h *AuthHandler) mine(c *gin.Context) {
-	user := data.GetUser(c)
+	user := GetUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
 		return
@@ -168,7 +231,7 @@ func (h *AuthHandler) mine(c *gin.Context) {
 }
 
 func (h *AuthHandler) updateProfile(c *gin.Context, req *authRequest) {
-	user := data.GetUser(c)
+	user := GetUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
 		return
@@ -182,7 +245,7 @@ func (h *AuthHandler) updateProfile(c *gin.Context, req *authRequest) {
 }
 
 func (h *AuthHandler) changePassword(c *gin.Context, req *authRequest) {
-	user := data.GetUser(c)
+	user := GetUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
 		return
@@ -203,7 +266,7 @@ func (h *AuthHandler) changePassword(c *gin.Context, req *authRequest) {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "密码修改失败"})
 		return
 	}
-	pkgRedis.DeleteJWT(c.Request.Context(), user.UserID)
+	database.DeleteJWT(c.Request.Context(), user.UserID)
 	tips := CheckPasswordStrength(*req.NewPassword)
 	response := gin.H{"message": "密码已修改"}
 	if len(tips) > 0 {
@@ -213,7 +276,7 @@ func (h *AuthHandler) changePassword(c *gin.Context, req *authRequest) {
 }
 
 func (h *AuthHandler) deleteAccount(c *gin.Context) {
-	user := data.GetUser(c)
+	user := GetUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
 		return
@@ -222,25 +285,8 @@ func (h *AuthHandler) deleteAccount(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "注销失败"})
 		return
 	}
-	pkgRedis.DeleteJWT(c.Request.Context(), user.UserID)
+	database.DeleteJWT(c.Request.Context(), user.UserID)
 	c.JSON(http.StatusOK, gin.H{"message": "账号已注销"})
-}
-
-func sendEmailAsync(email, code string) error {
-	// Run email sending synchronously for simplicity - could be made async with goroutine
-	// but Python version used asyncio.to_thread which is effectively synchronous in the request
-	return pkgSendEmail(email, code)
-}
-
-var pkgSendEmail = defaultSendEmail
-
-func defaultSendEmail(email, code string) error {
-	return errors.New("email not configured - import pkg/email for actual implementation")
-}
-
-// SetEmailSender allows the main package to inject the actual email sender.
-func SetEmailSender(fn func(string, string) error) {
-	pkgSendEmail = fn
 }
 
 // GetDB is a helper to access the database from other packages.

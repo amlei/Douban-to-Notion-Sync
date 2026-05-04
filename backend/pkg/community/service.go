@@ -5,31 +5,39 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/uptrace/bun"
 
 	"github.com/lifeink-ai/backend/internal/database"
-	"github.com/lifeink-ai/backend/internal/task"
-	"github.com/lifeink-ai/backend/pkg/data"
+	"github.com/lifeink-ai/backend/pkg/community/douban"
+	"github.com/lifeink-ai/backend/pkg/community/flomo"
+	"github.com/lifeink-ai/backend/pkg/community/weread"
 	"github.com/lifeink-ai/backend/pkg/scraper"
 )
 
 type CommunityService struct {
-	db        *bun.DB
-	taskMgr   *task.TaskManager
-	scraper   *scraper.Client
-	metaRepo  *CommunityMetaRepo
-	dataRepo  *data.DataRepo
+	db          *bun.DB
+	taskMgr     *TaskManager
+	scraper     *scraper.Client
+	metaRepo    *CommunityMetaRepo
+	dataRepo    *DataRepo
+	doubanRepo  *douban.DoubanRepo
+	wereadRepo  *weread.WereadRepo
+	flomoRepo   *flomo.FlomoRepo
 }
 
-func NewCommunityService(db *bun.DB, taskMgr *task.TaskManager, scraperClient *scraper.Client) *CommunityService {
+func NewCommunityService(db *bun.DB, taskMgr *TaskManager, scraperClient *scraper.Client) *CommunityService {
 	return &CommunityService{
-		db:       db,
-		taskMgr:  taskMgr,
-		scraper:  scraperClient,
-		metaRepo: NewCommunityMetaRepo(db),
-		dataRepo: data.NewDataRepo(db),
+		db:         db,
+		taskMgr:    taskMgr,
+		scraper:    scraperClient,
+		metaRepo:   NewCommunityMetaRepo(db),
+		dataRepo:   NewDataRepo(db),
+		doubanRepo: douban.NewDoubanRepo(db),
+		wereadRepo: weread.NewWereadRepo(db),
+		flomoRepo:  flomo.NewFlomoRepo(db),
 	}
 }
 
@@ -55,21 +63,23 @@ func (s *CommunityService) Status(ctx context.Context, userID int64, platform st
 		return result, nil
 	}
 
-	platformID := data.PlatformNameToID(platform)
+	platformID := PlatformNameToID(platform)
 	if platformID == 0 {
 		return map[string]any{"status": "idle"}, nil
 	}
 
 	row, err := s.metaRepo.GetBinding(ctx, userID, platformID)
 	if err == nil && row != nil && row.Bound == 1 {
-		return map[string]any{"status": "bound", "bound": true, "platform_id": row.PlatformID, "user_id": row.CommunityUserID}, nil
+		result := row.ToAPIDict()
+		result["status"] = "bound"
+		return result, nil
 	}
 	return map[string]any{"status": "idle"}, nil
 }
 
 func (s *CommunityService) StatusAll(ctx context.Context, userID int64) (map[string]map[string]any, error) {
 	result := map[string]map[string]any{}
-	for _, pf := range data.SupportedPlatforms() {
+	for _, pf := range SupportedPlatforms() {
 		status, _ := s.Status(ctx, userID, pf)
 		result[pf] = status
 	}
@@ -82,7 +92,7 @@ func (s *CommunityService) StartBind(ctx context.Context, userID int64, platform
 	return t.TaskID, nil
 }
 
-func (s *CommunityService) runBind(userID int64, platform, channel string, t *task.BindTask) {
+func (s *CommunityService) runBind(userID int64, platform, channel string, t *BindTask) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
@@ -130,7 +140,7 @@ func (s *CommunityService) runBind(userID int64, platform, channel string, t *ta
 				if v, ok := payload["session_expires_at"].(string); ok {
 					expiresAt = v
 				}
-				platformID := data.PlatformNameToID(platform)
+				platformID := PlatformNameToID(platform)
 				s.metaRepo.SaveBinding(ctx, userID, platformID, t.UserID, t.Profile)
 				s.metaRepo.SaveSessionState(ctx, userID, platformID, stateJSON, &expiresAt)
 			}
@@ -151,7 +161,6 @@ func (s *CommunityService) runBind(userID int64, platform, channel string, t *ta
 			t.Notify()
 
 		case "data":
-			// Write scraped data to PostgreSQL
 			s.handleDataEvent(ctx, userID, platform, payload)
 
 		case "done":
@@ -162,6 +171,9 @@ func (s *CommunityService) runBind(userID int64, platform, channel string, t *ta
 						t.ScrapeCounts[k] = int64(n)
 					}
 				}
+			}
+			if zipPath, ok := payload["zip_path"].(string); ok && zipPath != "" {
+				s.processFlomoZip(ctx, userID, zipPath, t)
 			}
 			t.Notify()
 			return
@@ -180,7 +192,7 @@ func (s *CommunityService) runBind(userID int64, platform, channel string, t *ta
 }
 
 func (s *CommunityService) StartSync(ctx context.Context, userID int64, platform string) (string, error) {
-	platformID := data.PlatformNameToID(platform)
+	platformID := PlatformNameToID(platform)
 	row, err := s.metaRepo.GetBinding(ctx, userID, platformID)
 	if err != nil || row == nil || row.Bound != 1 || row.CommunityUserID == nil {
 		return "", fmt.Errorf("not bound")
@@ -199,11 +211,10 @@ func (s *CommunityService) StartSync(ctx context.Context, userID int64, platform
 	return t.TaskID, nil
 }
 
-func (s *CommunityService) runSync(userID int64, platform, communityUserID, sessionState string, t *task.BindTask) {
+func (s *CommunityService) runSync(userID int64, platform, communityUserID, sessionState string, t *BindTask) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	// Fetch existing URLs for incremental sync
 	existingBookURLs := []string{}
 	existingMovieURLs := []string{}
 	bookmarkSynckeys := map[string]int{}
@@ -213,7 +224,7 @@ func (s *CommunityService) runSync(userID int64, platform, communityUserID, sess
 		for _, b := range books {
 			existingBookURLs = append(existingBookURLs, b.URL)
 		}
-		movies, _ := s.dataRepo.GetMovies(ctx, userID)
+		movies, _ := s.doubanRepo.GetMovies(ctx, userID)
 		for _, m := range movies {
 			existingMovieURLs = append(existingMovieURLs, m.URL)
 		}
@@ -223,13 +234,13 @@ func (s *CommunityService) runSync(userID int64, platform, communityUserID, sess
 	}
 
 	events, err := s.scraper.CallSync(ctx, scraper.SyncRequest{
-		Platform:          platform,
-		UserID:            userID,
-		SessionStateJSON:  sessionState,
-		CommunityUserID:   communityUserID,
-		ExistingBookURLs:  existingBookURLs,
+		Platform:         platform,
+		UserID:           userID,
+		SessionStateJSON: sessionState,
+		CommunityUserID:  communityUserID,
+		ExistingBookURLs: existingBookURLs,
 		ExistingMovieURLs: existingMovieURLs,
-		BookmarkSynckeys:  bookmarkSynckeys,
+		BookmarkSynckeys: bookmarkSynckeys,
 	})
 	if err != nil {
 		t.Status = "failed"
@@ -263,6 +274,9 @@ func (s *CommunityService) runSync(userID int64, platform, communityUserID, sess
 						t.ScrapeCounts[k] = int64(n)
 					}
 				}
+			}
+			if zipPath, ok := payload["zip_path"].(string); ok && zipPath != "" {
+				s.processFlomoZip(ctx, userID, zipPath, t)
 			}
 			t.Notify()
 			return
@@ -305,24 +319,24 @@ func (s *CommunityService) handleDataEvent(ctx context.Context, userID int64, pl
 			s.dataRepo.UpsertBooks(ctx, userID, items)
 		}
 	case "movie":
-		s.dataRepo.UpsertMovies(ctx, userID, items)
+		s.doubanRepo.UpsertMovies(ctx, userID, items)
 	case "game":
-		s.dataRepo.UpsertGames(ctx, userID, items)
+		s.doubanRepo.UpsertGames(ctx, userID, items)
 	case "review":
-		s.dataRepo.UpsertReviews(ctx, userID, items)
+		s.doubanRepo.UpsertReviews(ctx, userID, items)
 	case "note":
-		s.dataRepo.UpsertNotes(ctx, userID, items)
+		s.wereadRepo.UpsertNotes(ctx, userID, items)
 	case "bookmark":
-		s.dataRepo.UpsertBookmarks(ctx, userID, items)
+		s.wereadRepo.UpsertBookmarks(ctx, userID, items)
 	case "memo":
-		s.dataRepo.UpsertFlomoMemos(ctx, userID, items)
+		s.flomoRepo.UpsertFlomoMemos(ctx, userID, items)
 	default:
 		log.Printf("[community] Unknown data type: %s", dataType)
 	}
 }
 
 func (s *CommunityService) Refresh(ctx context.Context, userID int64, platform string) (map[string]any, error) {
-	platformID := data.PlatformNameToID(platform)
+	platformID := PlatformNameToID(platform)
 	row, err := s.metaRepo.GetBinding(ctx, userID, platformID)
 	if err != nil || row == nil || row.Bound != 1 {
 		return nil, fmt.Errorf("not bound")
@@ -334,8 +348,8 @@ func (s *CommunityService) Refresh(ctx context.Context, userID int64, platform s
 	}
 
 	resp, err := s.scraper.CallRefresh(ctx, scraper.RefreshRequest{
-		Platform:         platform,
-		SessionStateJSON: sessionState,
+		Platform:          platform,
+		SessionStateJSON:  sessionState,
 	})
 	if err != nil {
 		return nil, err
@@ -354,25 +368,50 @@ func (s *CommunityService) Refresh(ctx context.Context, userID int64, platform s
 }
 
 func (s *CommunityService) Unbind(ctx context.Context, userID int64, platform string) error {
-	platformID := data.PlatformNameToID(platform)
+	if platform == "flomo" {
+		platformID := PlatformNameToID(platform)
+		if row, err := s.metaRepo.GetBinding(ctx, userID, platformID); err == nil && row != nil && row.SessionStateJSON != nil {
+			if state := *row.SessionStateJSON; state != "" {
+				go s.scraper.CallUnbind(context.Background(), scraper.UnbindRequest{
+					Platform:         platform,
+					SessionStateJSON: state,
+				})
+			}
+		}
+	}
+
+	platformID := PlatformNameToID(platform)
 	err := s.metaRepo.DeleteBinding(ctx, userID, platformID)
 	s.taskMgr.ClearPlatformTask(userID, platform)
 	return err
 }
 
+func (s *CommunityService) processFlomoZip(ctx context.Context, userID int64, zipPath string, t *BindTask) {
+	memos, err := flomo.ParseFlomoExport(zipPath)
+	if err != nil {
+		log.Printf("[community] Failed to parse flomo zip %s: %v", zipPath, err)
+		return
+	}
+	if len(memos) > 0 {
+		s.flomoRepo.UpsertFlomoMemos(ctx, userID, memos)
+		t.ScrapeCounts["memos"] = int64(len(memos))
+	}
+	os.Remove(zipPath)
+}
+
 func (s *CommunityService) GetCommunityData(ctx context.Context, userID int64) (map[string]any, error) {
 	allBooks, _ := s.dataRepo.GetBooks(ctx, userID)
-	movies, _ := s.dataRepo.GetMovies(ctx, userID)
-	notes, _ := s.dataRepo.GetNotes(ctx, userID)
-	bookmarks, _ := s.dataRepo.GetBookmarks(ctx, userID)
-	memos, _ := s.dataRepo.GetFlomoMemos(ctx, userID)
+	movies, _ := s.doubanRepo.GetMovies(ctx, userID)
+	notes, _ := s.wereadRepo.GetNotes(ctx, userID)
+	bookmarks, _ := s.wereadRepo.GetBookmarks(ctx, userID)
+	memos, _ := s.flomoRepo.GetFlomoMemos(ctx, userID)
 
 	doubanBooks := []map[string]any{}
 	wereadBooks := []map[string]any{}
 	for i := range allBooks {
-		if allBooks[i].PlatformID == data.PlatformDouban {
+		if allBooks[i].PlatformID == PlatformDouban {
 			doubanBooks = append(doubanBooks, allBooks[i].ToAPIDict())
-		} else if allBooks[i].PlatformID == data.PlatformWeread {
+		} else if allBooks[i].PlatformID == PlatformWeread {
 			wereadBooks = append(wereadBooks, allBooks[i].ToAPIDict())
 		}
 	}
@@ -410,7 +449,6 @@ func (s *CommunityService) GetCommunityData(ctx context.Context, userID int64) (
 	}, nil
 }
 
-// GetDB is a convenience accessor.
 func (s *CommunityService) GetDB() *bun.DB {
 	return database.DB
 }

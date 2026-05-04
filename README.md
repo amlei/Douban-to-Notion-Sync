@@ -35,7 +35,7 @@ LifeInk AI 从豆瓣、微信读书、Flomo 等平台采集个人的阅读、影
 
 ### AI Agent
 
-- [x] 前端聊天界面（React + Vite）
+- [x] 前端聊天界面（React + Next.js）
 - [x] 流式响应（StreamingResponse + AI SDK）
 - [x] Go API Server (Gin) + Python Scraper 微服务架构
 - [ ] 开发 AI Agent
@@ -54,33 +54,33 @@ icon/                # 页面图标
 
 backend/             # API 服务 + 数据抓取
   main.go           # Go API Server (Gin) 入口
-  internal/         # 基础设施（config, middleware, websocket, task, database）
+  internal/         # 基础设施（config, database, email, middleware, redis, task, ws）
   pkg/              # 业务逻辑
     auth/           # JWT 认证（注册/登录/验证码/密码重置）
-    community/      # 平台绑定、同步编排
-    data/           # 数据模型 + PostgreSQL CRUD（Bun ORM）
+    community/      # 平台绑定、同步编排、数据模型 + PostgreSQL CRUD
+      douban/       # 豆瓣模型 + repo
+      weread/       # 微信读书模型 + repo
+      flomo/        # Flomo 模型 + repo + HTML/zip 导出解析
     scraper/        # Python Scraper HTTP 客户端（SSE 解析）
     chat/           # AI 聊天处理器
-    email/          # SMTP 邮件发送
-    redis/          # Redis 操作（验证码、JWT）
   scraper/          # Python Scraper 微服务（FastAPI）
-    server.py       # FastAPI 应用（bind/sync/refresh/health）
-    douban/         # 豆瓣（Playwright 登录 + requests 抓取）
-    weread/         # 微信读书（Playwright 浏览器自动化）
-    flomo/          # Flomo（Playwright 浏览器自动化 + HTML 导出解析）
-  migrations/       # PostgreSQL schema DDL
-  cmd/migrate/      # SQLite -> PostgreSQL 迁移工具
+    server.py       # FastAPI 应用（bind/sync/refresh/unbind/health）
+    community/
+      douban/       # 豆瓣（Playwright 登录 + requests 抓取）
+      weread/       # 微信读书（Playwright 浏览器自动化）
+      flomo/        # Flomo（Playwright 浏览器自动化 + HTML 导出解析）
 
-frontend/            # React 聊天界面（Bun + Vite）
-  src/api/           # API 集成（auth.ts, community.ts）
-  src/components/    # 通用 UI 组件（ChatPanel, Sidebar, WelcomeScreen, PanelModal）
-  src/features/      # 功能模块
-    auth/            # 登录/注册（LoginModal）
-    settings/        # 设置面板（SettingsModal, panels/, components/, hooks/）
-    modals.tsx       # 全局模态框状态（GlobalModalsProvider）
-  src/contexts/      # React Context（AuthContext）
-  src/hooks/         # 自定义 Hook（useChatStore）
-  src/types/         # TypeScript 类型定义
+frontend/            # Next.js App Router 前端（Bun + Turbopack）
+  src/app/           # 页面路由（App Router）
+    (auth)/          # 登录/注册页
+    workspace/       # 主工作区（聊天、设置、数据查看）
+    api/             # Route Handlers（BFF 层，转发请求至 Go 后端）
+  src/core/          # 核心业务逻辑
+    api/             # API 客户端（auth.ts, community.ts）
+    auth/            # 认证上下文与类型（AuthProvider, Zod schema）
+    community/       # 平台绑定/同步（TanStack Query, WebSocket）
+    chat/            # 聊天状态管理
+  src/components/    # UI 组件（ui/ 通用组件, workspace/ 业务组件）
 ```
 
 ---
@@ -108,7 +108,7 @@ bun run dev
 ```
 
 启动后：
-- 前端: http://localhost:5173
+- 前端: http://localhost:3000
 - 后端: http://localhost:8000
 - Scraper: http://localhost:50051/health
 

@@ -8,7 +8,6 @@ import (
 
 	"github.com/lifeink-ai/backend/internal/database"
 	"github.com/lifeink-ai/backend/pkg/auth"
-	"github.com/lifeink-ai/backend/pkg/data"
 )
 
 var whitelist = map[string]bool{
@@ -32,14 +31,22 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Validate Bearer token
-		header := c.GetHeader("Authorization")
-		if !strings.HasPrefix(header, "Bearer ") {
+		// Validate token: cookie first, then Bearer header
+		tokenStr := ""
+		if cookie, err := c.Cookie("access_token"); err == nil && cookie != "" {
+			tokenStr = cookie
+		} else {
+			header := c.GetHeader("Authorization")
+			if strings.HasPrefix(header, "Bearer ") {
+				tokenStr = header[7:]
+			}
+		}
+
+		if tokenStr == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"detail": "Missing token"})
 			c.Abort()
 			return
 		}
-		tokenStr := header[7:]
 
 		claims, err := auth.DecodeAccessToken(tokenStr)
 		if err != nil {
@@ -56,7 +63,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 		pk := int64(pkFloat)
 
-		user := &data.User{}
+		user := &auth.User{}
 		err = database.DB.NewSelect().Model(user).Where("id = ?", pk).Scan(c.Request.Context())
 		if err != nil || user.Status != "active" {
 			c.JSON(http.StatusUnauthorized, gin.H{"detail": "User not found"})
@@ -64,14 +71,26 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		SetUser(c, user)
+		auth.SetUser(c, user)
 		c.Next()
 	}
 }
 
 func CORSMiddleware() gin.HandlerFunc {
+	allowedOrigins := map[string]bool{
+		"http://localhost:3000":  true,
+		"http://localhost:5173":  true,
+		"http://127.0.0.1:3000": true,
+		"http://127.0.0.1:5173": true,
+	}
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+		if allowedOrigins[origin] {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Access-Control-Allow-Credentials", "true")
+		} else {
+			c.Header("Access-Control-Allow-Origin", "*")
+		}
 		c.Header("Access-Control-Allow-Methods", "*")
 		c.Header("Access-Control-Allow-Headers", "*")
 		if c.Request.Method == "OPTIONS" {
@@ -80,10 +99,4 @@ func CORSMiddleware() gin.HandlerFunc {
 		}
 		c.Next()
 	}
-}
-
-// GetUser retrieves the authenticated user from gin context.
-// Defined in pkg/data/ctx.go to avoid import cycles.
-func SetUser(c *gin.Context, user *data.User) {
-	c.Set("user", user)
 }

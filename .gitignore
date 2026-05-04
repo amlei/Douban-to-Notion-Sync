@@ -79,3 +79,4 @@ backend/backend
 # Scraper virtual environment
 backend/scraper/__pycache__/
 
+.next

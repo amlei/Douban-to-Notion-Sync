@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getServerSideUser } from "@/core/auth/server";
 import { AuthProvider } from "@/core/auth/AuthProvider";
@@ -13,12 +12,8 @@ export default async function WorkspaceLayout({
   const token = cookieStore.get("access_token")?.value;
   const result = await getServerSideUser(token);
 
-  if (result.status !== "authenticated") {
-    redirect("/login");
-  }
-
   return (
-    <AuthProvider initialUser={result.user}>
+    <AuthProvider initialUser={result.status === "authenticated" ? result.user : null}>
       <WorkspaceContent>{children}</WorkspaceContent>
     </AuthProvider>
   );

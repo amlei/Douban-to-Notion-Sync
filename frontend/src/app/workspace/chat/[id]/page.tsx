@@ -6,7 +6,6 @@ import { TextStreamChatTransport } from "ai";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/core/chat/use-chat-store";
-import { MessageBubble } from "@/components/workspace/chat/message-bubble";
 
 const transport = new TextStreamChatTransport({
   api: "/api/chat",
@@ -63,7 +62,16 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+          <Message key={msg.id} from={msg.role}>
+            <MessageContent>
+              {msg.parts.map((part, i) => {
+                if (part.type === "text") {
+                  return <MessageResponse key={i}>{part.text}</MessageResponse>;
+                }
+                return null;
+              })}
+            </MessageContent>
+          </Message>
         ))}
         {(status === "submitted" || status === "streaming") && (
           <div className="flex justify-center">

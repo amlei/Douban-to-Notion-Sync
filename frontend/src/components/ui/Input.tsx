@@ -1,20 +1,21 @@
-interface InputProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "size"> {
-  icon?: React.ReactNode;
-}
+import * as React from "react";
 
-export function Input({ icon, className, ...rest }: InputProps) {
+import { cn } from "@/lib/utils";
+
+function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
-    <div
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 border border-solid border-[color:var(--border)] rounded-[var(--radius)] bg-[var(--bg-sidebar)] transition-[border-color] duration-150 focus-within:border-[color:var(--sky-400)] ${className ?? ""}`}
-    >
-      {icon && (
-        <span className="flex shrink-0 text-[var(--text-light)]">{icon}</span>
+    <input
+      type={type}
+      data-slot="input"
+      className={cn(
+        "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+        "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+        "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+        className,
       )}
-      <input
-        className="border-none outline-none bg-transparent text-[0.82rem] text-[var(--text)] w-full font-[inherit] placeholder:text-[var(--text-light)] placeholder:opacity-60"
-        {...rest}
-      />
-    </div>
+      {...props}
+    />
   );
 }
+
+export { Input };

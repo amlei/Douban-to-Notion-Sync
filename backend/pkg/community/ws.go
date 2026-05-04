@@ -33,11 +33,16 @@ func (h *WebSocketHandler) RegisterRoutes(r *gin.Engine) {
 func (h *WebSocketHandler) handle(c *gin.Context) {
 	platform := c.Query("platform")
 
-	// Auth via subprotocol
-	subprotocols := websocket.Subprotocols(c.Request)
+	// Auth: cookie first, then subprotocol fallback
 	token := ""
-	if len(subprotocols) > 0 {
-		token = subprotocols[0]
+	if cookie, err := c.Cookie("access_token"); err == nil && cookie != "" {
+		token = cookie
+	}
+	if token == "" {
+		subprotocols := websocket.Subprotocols(c.Request)
+		if len(subprotocols) > 0 {
+			token = subprotocols[0]
+		}
 	}
 
 	if token == "" {

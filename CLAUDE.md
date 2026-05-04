@@ -26,15 +26,15 @@ python -m playwright install chromium   # first time only
 uvicorn server:app --port 50051          # start scraper microservice
 ```
 
-### Frontend (React + Vite + Bun)
+### Frontend (Next.js App Router + Bun)
 
 ```bash
 cd frontend
 bun install           # install dependencies
-bun run dev           # start dev server (http://localhost:5173)
+bun run dev           # start dev server (http://localhost:3000, Turbopack)
 bun run build         # production build
 bun run lint          # run ESLint
-bun run preview       # preview production build
+bun run start         # preview production build
 ```
 
 ### One-command startup
@@ -49,6 +49,8 @@ cd backend && go run main.go
 # Terminal 3: Frontend
 cd frontend && bun run dev
 ```
+
+Note: The frontend uses Next.js App Router with Turbopack dev server on port 3000. REST API calls go through Next.js Route Handlers (`src/app/api/`) that act as a BFF layer for cookie management. Only WebSocket connections are proxied directly via `next.config.js` rewrites. The env var `INTERNAL_BACKEND_URL` (defaults to `http://127.0.0.1:8000`) configures the backend address.
 
 ### Root project (legacy Notion sync)
 
@@ -78,14 +80,11 @@ Frontend (React)  <-->  Go API Server (Gin, :8000)  <-->  PostgreSQL
 **Go API Server** -- handles all HTTP/WebSocket, auth, email, Redis, PostgreSQL:
 - `main.go` -- entrypoint, wires all handlers and middleware
 - `internal/config/` -- YAML config loading (SMTP presets, Redis, PostgreSQL, JWT)
-- `internal/database/` -- Bun ORM + pgdriver PostgreSQL init + seed (no auto-migration; requires pre-existing schema)
-- `internal/middleware/` -- JWT auth middleware (whitelist + Bearer token) + CORS
-- `internal/ws/` -- WebSocket handler (subprotocol auth, task polling)
-- `internal/task/` -- BindTask coordination (in-memory map + channel notification)
+- `internal/database/` -- PostgreSQL init + seed (`postgres.go`, Bun ORM + pgdriver, no auto-migration) and Redis operations (`redis.go`, verification codes + JWT tokens)
+- `internal/middleware/` -- JWT auth middleware (cookie-first, Bearer fallback) + CORS (dynamic origin with credentials)
 - `internal/email/` -- SMTP email sending with HTML template
-- `internal/redis/` -- Redis operations (verification codes, JWT token storage)
 - `pkg/auth/` -- Auth handler (register/verify/login/mine/update-profile/change-password/delete), JWT service, user repo
-- `pkg/community/` -- Platform binding, sync orchestration, data models + repos. Per-platform subdirectories contain platform-specific models and repos:
+- `pkg/community/` -- Platform binding, sync orchestration, data models + repos, WebSocket handler (`ws.go`), task coordination (`task.go`). Per-platform subdirectories:
   - `pkg/community/douban/` -- `models.go`, `repo.go`
   - `pkg/community/weread/` -- `models.go`, `repo.go`
   - `pkg/community/flomo/` -- `models.go`, `parser.go` (HTML/zip export parsing), `repo.go`
@@ -114,28 +113,47 @@ Legacy Python code in `backend/src/` and `backend/db/` has been removed.
 - `POST /api/chat` -- streaming text response (mock LLM)
 - `POST /api/community/bind?action=...&platform=...` -- platform bind/unbind/status/refresh
 - `POST /api/community/sync?platform=...` -- trigger data sync
-- `WS /api/community/ws?token=...&platform=...` -- WebSocket progress (auth via subprotocol)
+- `WS /api/community/ws?platform=...` -- WebSocket progress (auth via cookie or subprotocol)
 - `GET /api/community/data?platform=all` -- retrieve all platform data
 
 ### Frontend (`frontend/`)
 
-Bun-managed React 19 + TypeScript + Vite.
+Bun-managed Next.js 16 App Router + React 19 + TypeScript + Tailwind CSS v4.
 
-- `App.tsx` wraps everything in `AuthProvider` > `GlobalModalsProvider` > `AppInner`. Uses `react-router-dom` with routes defined in App. Renders `Sidebar`, `ChatPanel`/`WelcomeScreen`, and a right panel placeholder.
-- **Feature-based structure** under `features/` with `components/` and `panels/` for each feature module.
-- **Global modal system** (`features/modals.tsx`): `GlobalModalsProvider` + `useGlobalModals()` hook manages `loginVisible` and `settingsVisible` state. Components open/close modals via context instead of prop drilling.
-- `PanelModal` (`components/PanelModal/`): reusable modal with sidebar-tab and fullscreen panel modes. Accepts `PanelItem[]` config with `fullPanel?: boolean` flag.
-- `SettingsModal` (`features/settings/SettingsModal/`): 5 panels (GeneralSettings, AccountManage, DataManage, SyncManage, ServiceAgreement). DataManage uses fullscreen mode.
-- `LoginModal` (`features/auth/LoginModal/`): login + registration with email verification code flow.
-- `AuthContext` (`contexts/AuthContext.tsx`): global auth state with JWT token storage in localStorage, auto-logout on 401, `authedFetch()` wrapper.
-- `ThemeContext` (`contexts/ThemeContext.tsx`): light/dark/system theme switching, persists to localStorage.
-- `useChatStore` hook manages chat state (messages, history, active chat) with in-memory `Map` cache.
-- `ChatPanel` (`components/ChatPanel/`) uses `@ai-sdk/react`'s `useChat` hook with `TextStreamChatTransport` for streaming. `MessageBubble` is inlined.
-- `api/auth.ts` provides auth API calls; `api/community.ts` provides platform-agnostic REST and WebSocket functions for platform binding and data access.
-- `types/community.ts` defines shared types: `BindStatus`, `PollResult`, `BookItem`, `MovieItem`, `NoteItem`, `BookmarkItem`, `MemoItem`, `CommunityData`.
-- **Component conventions**: complex components live in dedicated directories (`components/ChatPanel/`, `components/Sidebar/`). Reusable UI primitives are single files in `components/ui/` (`Button.tsx`, `Input.tsx`, `Select.tsx`, `ScrollArea.tsx`).
-- Vite dev server proxies `/api` (including WebSocket) to `http://localhost:8000`.
-- UI is in Chinese.
+- **App Router structure** (`src/app/`):
+  - `layout.tsx` -- root layout with `ThemeProvider` (next-themes)
+  - `page.tsx` -- redirects to `/workspace`
+  - `api/` -- Route Handlers (BFF layer): `auth/route.ts`, `chat/route.ts`, `community/{bind,sync,data}/route.ts`. Each forwards requests to Go backend with cookie passthrough; `auth` handler sets/clears httpOnly `access_token` cookie.
+  - `(auth)/layout.tsx` -- auth guard: redirects authenticated users to `/workspace`
+  - `(auth)/login/page.tsx` -- login/registration page (email verification code flow)
+  - `workspace/layout.tsx` -- workspace guard: redirects unauthenticated users to `/login`
+  - `workspace/workspace-content.tsx` -- `QueryClientProvider` + `SidebarProvider` + sidebar + main content
+  - `workspace/chat/new/page.tsx` -- welcome screen with chat input
+  - `workspace/chat/[id]/page.tsx` -- chat page with `@ai-sdk/react` streaming
+  - `workspace/settings/page.tsx` -- settings tabs (general, account, data, terms)
+  - `workspace/settings/sync/page.tsx` -- platform binding/sync page
+  - `workspace/settings/data/page.tsx` -- data viewer (books/movies/notes/memos)
+- **Core business logic** (`src/core/`):
+  - `api/client.ts` -- fetch wrapper with `credentials: "include"` for cookie-based auth
+  - `api/auth.ts` -- auth API functions (register/verify/login/logout/profile)
+  - `api/community.ts` -- community API + WebSocket (cookie-based auth)
+  - `auth/types.ts` -- Zod `userSchema`, `AuthResult` tagged union
+  - `auth/server.ts` -- `getServerSideUser()` reads cookie, calls backend for validation
+  - `auth/AuthProvider.tsx` -- client auth context with `{ user, isAuthenticated, logout, refreshUser }`
+  - `community/types.ts` -- `BindStatus`, `PollResult`, `BookItem`, `MovieItem`, etc.
+  - `community/queries.ts` -- TanStack Query hooks for community data and bindings
+  - `community/use-platform-binding.ts` -- platform binding state machine with WebSocket
+  - `chat/use-chat-store.ts` -- in-memory chat state (Map cache)
+  - `utils/password.ts` -- password strength checking
+- **UI components** (`src/components/`):
+  - `ui/` -- 30+ Radix UI + CVA components (button, input, dialog, tabs, sidebar, etc.)
+  - `workspace/` -- feature components (sidebar, chat, settings panels, data views)
+  - `theme-provider.tsx` -- next-themes wrapper
+  - `query-client-provider.tsx` -- TanStack Query provider
+- **Styling**: Tailwind CSS v4 with oklch color system, `class`-based dark mode via next-themes
+- **Auth**: Cookie-based (httpOnly `access_token`), server-side auth guards in layouts
+- **API routing**: REST calls go through Next.js Route Handlers (`src/app/api/auth/route.ts`, `src/app/api/chat/route.ts`, `src/app/api/community/{bind,sync,data}/route.ts`) that forward to Go backend, managing httpOnly cookies server-side. WebSocket is the only direct proxy via `next.config.js` rewrites.
+- UI is in Chinese
 
 ### Root: Legacy Notion Sync Pipeline
 

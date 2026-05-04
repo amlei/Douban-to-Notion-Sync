@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -41,6 +42,18 @@ func (h *AuthHandler) handle(c *gin.Context) {
 		return
 	}
 
+	// Actions that require an authenticated user
+	authedActions := map[string]bool{
+		"mine": true, "update-profile": true, "change-password": true,
+		"logout": true, "delete": true,
+	}
+	if authedActions[req.Action] {
+		if err := h.authenticateRequest(c); err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"detail": err.Error()})
+			return
+		}
+	}
+
 	switch req.Action {
 	case "register":
 		h.register(c, &req)
@@ -61,6 +74,41 @@ func (h *AuthHandler) handle(c *gin.Context) {
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"detail": "未知操作: " + req.Action})
 	}
+}
+
+func (h *AuthHandler) authenticateRequest(c *gin.Context) error {
+	tokenStr := ""
+	if cookie, err := c.Cookie("access_token"); err == nil && cookie != "" {
+		tokenStr = cookie
+	} else {
+		header := c.GetHeader("Authorization")
+		if strings.HasPrefix(header, "Bearer ") {
+			tokenStr = header[7:]
+		}
+	}
+	if tokenStr == "" {
+		return fmt.Errorf("Missing token")
+	}
+
+	claims, err := DecodeAccessToken(tokenStr)
+	if err != nil {
+		return fmt.Errorf("Invalid token")
+	}
+
+	pkFloat, ok := claims["pk"].(float64)
+	if !ok {
+		return fmt.Errorf("Invalid token")
+	}
+	pk := int64(pkFloat)
+
+	user := &User{}
+	err = GetDB().NewSelect().Model(user).Where("id = ?", pk).Scan(c.Request.Context())
+	if err != nil || user.Status != "active" {
+		return fmt.Errorf("User not found")
+	}
+
+	SetUser(c, user)
+	return nil
 }
 
 func (h *AuthHandler) register(c *gin.Context, req *authRequest) {
@@ -121,6 +169,7 @@ func (h *AuthHandler) verify(c *gin.Context, req *authRequest) {
 	}
 
 	database.StoreJWT(c.Request.Context(), user.UserID, token)
+	c.SetCookie("access_token", token, 86400, "/", "", false, true)
 	tips := CheckPasswordStrength(password)
 	response := gin.H{
 		"access_token": token,
@@ -152,6 +201,7 @@ func (h *AuthHandler) login(c *gin.Context, req *authRequest) {
 	}
 
 	database.StoreJWT(c.Request.Context(), user.UserID, token)
+	c.SetCookie("access_token", token, 86400, "/", "", false, true)
 	c.JSON(http.StatusOK, gin.H{
 		"access_token": token,
 		"user":         user.ToAPIDict(),
@@ -167,6 +217,7 @@ func (h *AuthHandler) logout(c *gin.Context) {
 			}
 		}
 	}
+	c.SetCookie("access_token", "", -1, "/", "", false, true)
 	c.JSON(http.StatusOK, gin.H{"message": "已退出"})
 }
 

@@ -31,14 +31,22 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Validate Bearer token
-		header := c.GetHeader("Authorization")
-		if !strings.HasPrefix(header, "Bearer ") {
+		// Validate token: cookie first, then Bearer header
+		tokenStr := ""
+		if cookie, err := c.Cookie("access_token"); err == nil && cookie != "" {
+			tokenStr = cookie
+		} else {
+			header := c.GetHeader("Authorization")
+			if strings.HasPrefix(header, "Bearer ") {
+				tokenStr = header[7:]
+			}
+		}
+
+		if tokenStr == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"detail": "Missing token"})
 			c.Abort()
 			return
 		}
-		tokenStr := header[7:]
 
 		claims, err := auth.DecodeAccessToken(tokenStr)
 		if err != nil {
@@ -69,8 +77,20 @@ func AuthMiddleware() gin.HandlerFunc {
 }
 
 func CORSMiddleware() gin.HandlerFunc {
+	allowedOrigins := map[string]bool{
+		"http://localhost:3000":  true,
+		"http://localhost:5173":  true,
+		"http://127.0.0.1:3000": true,
+		"http://127.0.0.1:5173": true,
+	}
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+		if allowedOrigins[origin] {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Access-Control-Allow-Credentials", "true")
+		} else {
+			c.Header("Access-Control-Allow-Origin", "*")
+		}
 		c.Header("Access-Control-Allow-Methods", "*")
 		c.Header("Access-Control-Allow-Headers", "*")
 		if c.Request.Method == "OPTIONS" {

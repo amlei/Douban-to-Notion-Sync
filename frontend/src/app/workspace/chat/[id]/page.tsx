@@ -6,7 +6,6 @@ import { TextStreamChatTransport } from "ai";
 import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useChatStore } from "@/core/chat/use-chat-store";
-import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 
 const transport = new TextStreamChatTransport({
   api: "/api/chat",

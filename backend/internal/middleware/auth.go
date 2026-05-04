@@ -8,7 +8,6 @@ import (
 
 	"github.com/lifeink-ai/backend/internal/database"
 	"github.com/lifeink-ai/backend/pkg/auth"
-	"github.com/lifeink-ai/backend/pkg/data"
 )
 
 var whitelist = map[string]bool{
@@ -56,7 +55,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 		pk := int64(pkFloat)
 
-		user := &data.User{}
+		user := &auth.User{}
 		err = database.DB.NewSelect().Model(user).Where("id = ?", pk).Scan(c.Request.Context())
 		if err != nil || user.Status != "active" {
 			c.JSON(http.StatusUnauthorized, gin.H{"detail": "User not found"})
@@ -64,7 +63,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		SetUser(c, user)
+		auth.SetUser(c, user)
 		c.Next()
 	}
 }
@@ -80,10 +79,4 @@ func CORSMiddleware() gin.HandlerFunc {
 		}
 		c.Next()
 	}
-}
-
-// GetUser retrieves the authenticated user from gin context.
-// Defined in pkg/data/ctx.go to avoid import cycles.
-func SetUser(c *gin.Context, user *data.User) {
-	c.Set("user", user)
 }

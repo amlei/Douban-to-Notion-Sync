@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"github.com/uptrace/bun"
-
-	"github.com/lifeink-ai/backend/pkg/data"
 )
 
 type AuthRepo struct {
@@ -17,8 +15,8 @@ func NewAuthRepo(db *bun.DB) *AuthRepo {
 	return &AuthRepo{db: db}
 }
 
-func (r *AuthRepo) GetActiveUserByEmail(ctx context.Context, email string) (*data.User, error) {
-	user := &data.User{}
+func (r *AuthRepo) GetActiveUserByEmail(ctx context.Context, email string) (*User, error) {
+	user := &User{}
 	err := r.db.NewSelect().Model(user).
 		Where("email = ? AND status = 'active'", email).
 		Scan(ctx)
@@ -28,8 +26,8 @@ func (r *AuthRepo) GetActiveUserByEmail(ctx context.Context, email string) (*dat
 	return user, nil
 }
 
-func (r *AuthRepo) GetDeletedUserByEmail(ctx context.Context, email string) (*data.User, error) {
-	user := &data.User{}
+func (r *AuthRepo) GetDeletedUserByEmail(ctx context.Context, email string) (*User, error) {
+	user := &User{}
 	err := r.db.NewSelect().Model(user).
 		Where("email = ? AND status = 'deleted'", email).
 		Scan(ctx)
@@ -39,8 +37,8 @@ func (r *AuthRepo) GetDeletedUserByEmail(ctx context.Context, email string) (*da
 	return user, nil
 }
 
-func (r *AuthRepo) GetUserByPK(ctx context.Context, pk int64) (*data.User, error) {
-	user := &data.User{}
+func (r *AuthRepo) GetUserByPK(ctx context.Context, pk int64) (*User, error) {
+	user := &User{}
 	err := r.db.NewSelect().Model(user).
 		Where("id = ?", pk).
 		Scan(ctx)
@@ -50,7 +48,7 @@ func (r *AuthRepo) GetUserByPK(ctx context.Context, pk int64) (*data.User, error
 	return user, nil
 }
 
-func (r *AuthRepo) CreateUser(ctx context.Context, email, password string) (*data.User, error) {
+func (r *AuthRepo) CreateUser(ctx context.Context, email, password string) (*User, error) {
 	uid := GenerateUserID()
 	name := "星迹 " + uid
 	hash, err := HashPassword(password)
@@ -74,7 +72,7 @@ func (r *AuthRepo) CreateUser(ctx context.Context, email, password string) (*dat
 		return deleted, nil
 	}
 
-	user := &data.User{
+	user := &User{
 		UserID:        uid,
 		Email:         email,
 		PasswordHash:  hash,
@@ -91,7 +89,7 @@ func (r *AuthRepo) CreateUser(ctx context.Context, email, password string) (*dat
 	return user, nil
 }
 
-func (r *AuthRepo) UpdateProfile(ctx context.Context, user *data.User, name, avatar, bio *string) (*data.User, error) {
+func (r *AuthRepo) UpdateProfile(ctx context.Context, user *User, name, avatar, bio *string) (*User, error) {
 	if name != nil {
 		user.Name = *name
 	}
@@ -106,7 +104,7 @@ func (r *AuthRepo) UpdateProfile(ctx context.Context, user *data.User, name, ava
 	return user, err
 }
 
-func (r *AuthRepo) UpdatePassword(ctx context.Context, user *data.User, newPassword string) error {
+func (r *AuthRepo) UpdatePassword(ctx context.Context, user *User, newPassword string) error {
 	hash, err := HashPassword(newPassword)
 	if err != nil {
 		return err
@@ -117,7 +115,7 @@ func (r *AuthRepo) UpdatePassword(ctx context.Context, user *data.User, newPassw
 	return err
 }
 
-func (r *AuthRepo) SoftDelete(ctx context.Context, user *data.User) error {
+func (r *AuthRepo) SoftDelete(ctx context.Context, user *User) error {
 	user.Status = "deleted"
 	user.UpdatedAt = time.Now()
 	_, err := r.db.NewUpdate().Model(user).WherePK().Exec(ctx)

@@ -1,54 +1,68 @@
 # Backend
 
-基于 FastAPI + Playwright 的社区数据抓取与 API 服务模块，独立管理依赖。
+Go (Gin) API 服务器 + Python (FastAPI) 数据抓取微服务。
 
 ## 环境要求
 
+- Go >= 1.26
 - Python >= 3.12
-- [uv](https://docs.astral.sh/uv/)
-- Redis（用于邮箱验证码存储）
+- PostgreSQL
+- Redis（验证码 + JWT 存储）
 
 ## 快速开始
+
+### Go API 服务器
 
 ```bash
 cd backend
 
-# 安装依赖
-uv sync
-
-# 安装浏览器（首次）
-uv run python -m playwright install chromium
-
-# 配置 SMTP + Redis（注册功能需要）
+# 配置 SMTP / Redis / PostgreSQL
 cp config-example.yaml config.yaml
-# 编辑 config.yaml 填入 SMTP 凭据和 Redis 连接信息
 
-# 启动 API 服务
-uv run python src/api.py
-
-# 或使用 CLI 抓取数据
-uv run python __main__.py --type books --pages 3
+# 启动（默认监听 :8000）
+go run main.go
 ```
 
-## API 服务
+### Python Scraper 微服务
 
-启动后默认监听 `http://localhost:8000`，Swagger 文档在 `/docs`。
+```bash
+cd backend/scraper
 
-所有 API 使用 **统一单端点模式**：每个领域一个 URL，通过 `action` 字段或查询参数区分操作。
+# 安装依赖
+pip install -r requirements.txt
+
+# 安装浏览器（首次）
+python -m playwright install chromium
+
+# 启动（默认监听 :50051，仅供 Go 后端内部调用）
+uvicorn server:app --port 50051
+```
+
+### 前端
+
+```bash
+cd frontend
+bun install
+bun run dev
+```
+
+## API
+
+Go API 服务器监听 `http://localhost:8000`。所有 API 使用**统一单端点模式**：每个领域一个 URL，通过 `action` 字段或查询参数区分操作。
 
 ### 认证
 
 所有认证操作通过 `POST /api/auth`，请求体中包含 `action` 字段：
 
-| action | 方法 | 说明 |
-|--------|------|------|
-| `register` | POST | 发送邮箱验证码 |
-| `verify` | POST | 验证码校验 + 创建账号（返回 JWT） |
-| `login` | POST | 登录（返回 JWT） |
-| `me` | GET | 获取当前用户信息 |
-| `update` | PUT | 更新用户资料 |
-| `change-password` | POST | 修改密码 |
-| `delete` | POST | 注销账号（软删除） |
+| action | 说明 |
+|--------|------|
+| `register` | 发送邮箱验证码 |
+| `verify` | 验证码校验 + 创建账号（返回 JWT） |
+| `login` | 登录（返回 JWT） |
+| `mine` | 获取当前用户信息 |
+| `update-profile` | 更新用户资料（name, avatar, bio） |
+| `change-password` | 修改密码 |
+| `delete` | 注销账号（软删除） |
 
 使用 JWT Bearer Token 认证。`register`、`verify`、`login` 和 `/api/chat` 无需认证。
 
@@ -56,102 +70,93 @@ uv run python __main__.py --type books --pages 3
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/api/chat` | POST | 流式聊天响应 |
 | `/api/community/bind?action=...&platform=...` | POST | 平台绑定操作 |
 | `/api/community/sync?platform=...` | POST | 触发已绑定平台的数据同步 |
 | `/api/community/ws?token=...&platform=...` | WS | 绑定/同步进度实时推送 |
 | `/api/community/data?platform=...` | GET | 获取已同步的数据 |
+| `/api/chat` | POST | 流式聊天响应（mock） |
 
-`action` 可选值: `status`, `start`, `refresh`, `delete`。`platform` 可选值: `douban`, `weread`, `flomo`, `all`。
+`bind` 的 `action` 可选值: `status`, `start`, `refresh`, `delete`。`platform` 可选值: `douban`, `weread`, `flomo`, `all`。
 
-## CLI 抓取
+WebSocket 通过子协议传递 JWT token 进行认证，实时推送二维码、抓取进度、完成/失败状态。
 
-```bash
-uv run python __main__.py --type <类型> [--pages <页数>]
-```
-
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `--type` | 抓取类型：`profile` `books` `movies` `games` `reviews` `notes` `browser` | 必填 |
-| `--pages` | 最大抓取页数 | 1 |
-
-`browser` 类型会使用已保存的 session 打开一个交互式 Chromium 浏览器，方便调试或手动登录。
-
-## 测试
-
-```bash
-uv run pytest tests/ -v -s                      # 运行全部测试
-uv run pytest tests/test_weread_client.py -v -s  # 运行单个文件
-```
-
-测试使用真实 Chromium 浏览器，首次运行需要扫码登录。
-
-## 项目结构
+## 架构
 
 ```
-backend/
-  pyproject.toml
-  config-example.yaml               # SMTP + Redis 配置模板
-  __main__.py                       # CLI 入口
-  src/
-    api.py                          # FastAPI 应用（路由、WebSocket）
-    api/
-      base.py                       # BindTask 数据类 + supported_platforms()
-      douban.py                     # 豆瓣 AsyncBindManager
-      weread.py                     # 微信读书 WereadBindManager
-      flomo.py                      # Flomo FlomoBindManager
-    core/
-      auth/
-        auth.py                     # JWT 创建/验证、密码哈希
-        deps.py                     # get_current_user 依赖注入
-        repository.py               # AuthRepo（用户 CRUD）
-        routes.py                   # /api/auth 路由
-      middleware.py                 # AuthMiddleware（全局 JWT 校验）
-      utils/
-        config.py                   # config.yaml 加载（SmtpConfig, RedisConfig）
-        email.py                    # SMTP 邮件发送
-        redis.py                    # Redis 客户端（验证码存储）
+Go API Server (:8000)
+  internal/
+    config/          # config.yaml 加载（SMTP 预设、Redis、PostgreSQL、JWT）
+    database/        # Bun ORM + pgdriver PostgreSQL 初始化 + 平台 seed
+    email/           # SMTP 邮件发送（HTML 模板）
+    middleware/      # JWT 认证中间件（路径白名单）+ CORS
+    redis/           # Redis 操作（验证码 10min TTL、JWT 24h TTL）
+    task/            # BindTask 协调（内存 map + channel 通知）
+    ws/              # WebSocket handler（子协议认证、轮询任务状态）
+  pkg/
+    auth/            # 认证（handler/service/repo 三层，bcrypt + JWT + Redis）
+    community/       # 平台绑定/同步编排、数据模型 + PostgreSQL CRUD
+      douban/        # 豆瓣模型 + repo
+      weread/        # 微信读书模型 + repo
+      flomo/         # Flomo 模型 + repo + HTML/zip 导出解析
+    scraper/         # Python Scraper HTTP 客户端（SSE 流解析）
+    chat/            # Mock 聊天流式响应
+
+Python Scraper Service (:50051)
+  scraper/
+    server.py        # FastAPI 应用（POST /bind、POST /sync、POST /refresh、POST /unbind、GET /health）
     community/
-      douban/
-        client.py                   # DoubanClient（上下文管理器）
-        session.py                  # Session 管理（加载/保存 cookies）
-        login.py                    # 二维码登录流程
-        models/                     # Pydantic 数据模型
-        scrapers/                   # 页面抓取器（base.py 为分页基类）
-      weread/
-        client.py                   # WereadClient（浏览器自动化）
-        session.py                  # Session 管理（Playwright storage state）
-        login.py                    # 登录流程
-        models/                     # WeRead Pydantic 模型
-        scrapers/                   # 书架、标注、个人资料抓取器
-      flomo/
-        client.py                   # FlomoClient（浏览器自动化）
-        session.py                  # Session 管理（Playwright storage state）
-        login.py                    # 登录流程
-        models/                     # Flomo Pydantic 模型
-        parser.py                   # HTML 导出解析
-  db/
-    engine.py                       # SQLAlchemy 异步引擎、会话工厂
-    base.py                         # DeclarativeBase
-    models.py                       # ORM 模型（User, CommunityMeta, BookRow, FlomoMemoRow 等）
-    repository.py                   # 数据访问层（AuthRepo, CommunityMetaRepo, DataRepo）
-  tests/
-    test_login_integration.py       # 登录集成测试
-    test_weread_client.py           # WeRead 客户端测试
-    test_weread_login.py            # WeRead 登录测试
-    test_weread_session.py          # WeRead Session 测试
+      douban/        # 豆瓣（Playwright 登录 + requests 抓取）
+      weread/        # 微信读书（Playwright 浏览器自动化）
+      flomo/         # Flomo（Playwright 浏览器自动化 + HTML 导出解析）
 ```
 
-## 编程使用
+### 数据库（PostgreSQL）
 
-```python
-from src.community.douban import DoubanClient
+Bun ORM，无自动建表，schema 需预先创建。
 
-with DoubanClient() as client:
-    client.ensure_ready()
-    print(client.user_id)
+| 表 | 说明 |
+|----|------|
+| `platforms` | 平台定义（douban=1, weread=2, flomo=3） |
+| `users` | 用户账号（JWT 认证，软删除） |
+| `community_meta` | 平台绑定状态、session state、profile JSON |
+| `books` | 图书数据（豆瓣 + 微信读书） |
+| `movies` | 影视数据（豆瓣） |
+| `games` | 游戏数据（豆瓣） |
+| `reviews` | 书评/影评（豆瓣） |
+| `notes` | 日记（豆瓣） |
+| `bookmarks` | 标注（微信读书） |
+| `flomo_memos` | 日记（Flomo） |
 
-    books = client.scrape_books(max_pages=2)
-    for book in books:
-        print(book.title, book.rating)
+所有 `user_id` 外键引用 `users.id`，`CASCADE` 删除。模型有 `ToAPIDict()` 方法用于 API 响应，`ChangeHash()` 用于增量同步变更检测。
+
+## 配置
+
+`config.yaml`（已 gitignore）：
+
+```yaml
+smtp:
+  provider: "qq"          # qq / outlook / 163 / 126 / yeah / custom
+  username: ""
+  password: ""
+
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+  password: ""
+
+postgres:
+  host: "localhost"
+  port: 5432
+  user: "lifeink"
+  password: ""
+  dbname: "lifeink"
+  sslmode: "disable"
+
+# jwt_secret: ""          # 留空则自动生成
+# scraper_url: "http://127.0.0.1:50051"
 ```
+
+## 旧版代码
+
+旧版 Python FastAPI 后端代码（`src/`、`db/`、`tests/`、`__main__.py`）已在 Go 重写中移除。

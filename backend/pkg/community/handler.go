@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/lifeink-ai/backend/pkg/data"
+	"github.com/lifeink-ai/backend/pkg/auth"
 )
 
 type CommunityHandler struct {
@@ -31,7 +31,7 @@ func (h *CommunityHandler) bind(c *gin.Context) {
 		return
 	}
 
-	user := data.GetUser(c)
+	user := auth.GetUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
 		return
@@ -96,7 +96,7 @@ func (h *CommunityHandler) sync(c *gin.Context) {
 		return
 	}
 
-	user := data.GetUser(c)
+	user := auth.GetUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
 		return
@@ -117,7 +117,7 @@ func (h *CommunityHandler) data(c *gin.Context) {
 		return
 	}
 
-	user := data.GetUser(c)
+	user := auth.GetUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
 		return
@@ -132,7 +132,7 @@ func (h *CommunityHandler) data(c *gin.Context) {
 }
 
 func isSupportedPlatform(platform string) bool {
-	for _, p := range data.SupportedPlatforms() {
+	for _, p := range SupportedPlatforms() {
 		if p == platform {
 			return true
 		}

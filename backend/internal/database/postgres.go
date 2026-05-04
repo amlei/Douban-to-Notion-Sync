@@ -13,13 +13,37 @@ import (
 	"github.com/lifeink-ai/backend/internal/config"
 )
 
+type PostgresConfig struct {
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	DBName   string `yaml:"dbname"`
+	SSLMode  string `yaml:"sslmode"`
+}
+
+func (p *PostgresConfig) DSN() string {
+	port := p.Port
+	if port == 0 {
+		port = 5432
+	}
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		p.User, p.Password, p.Host, port, p.DBName, p.SSLMode)
+}
+
 var DB *bun.DB
 
 func Init(ctx context.Context) error {
-	cfg := config.Get()
-	dsn := cfg.Postgres.DSN()
+	cfg := PostgresConfig{
+		Host:    "localhost",
+		Port:    5432,
+		User:    "lifeink",
+		DBName:  "lifeink",
+		SSLMode: "disable",
+	}
+	config.Unmarshal("postgres", &cfg)
 
-	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
+	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.DSN())))
 	DB = bun.NewDB(sqldb, pgdialect.New())
 
 	if err := DB.Ping(); err != nil {

@@ -141,3 +141,11 @@ export async function deleteAccount(): Promise<{ message: string }> {
   if (!res.ok) throw new Error("注销失败");
   return res.json();
 }
+
+export async function logout(): Promise<void> {
+  try {
+    await authFetch({ action: "logout" }, true);
+  } catch {
+    // ignore errors, clear local state regardless
+  }
+}

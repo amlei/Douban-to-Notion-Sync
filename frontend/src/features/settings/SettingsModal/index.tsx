@@ -1,6 +1,6 @@
 import { Settings, User, Database, FileText, RefreshCw, BookOpen } from "lucide-react";
-import { PanelModal } from "../../../components/PanelModal";
-import type { PanelItem } from "../../../components/PanelModal/types";
+import { PanelModal } from "@/components/PanelModal";
+import type { PanelItem } from "@/components/PanelModal/types";
 import { useGlobalModals } from "../../modals";
 import { GeneralSettings } from "../panels/GeneralSettings";
 import { AccountManage } from "../panels/AccountManage";

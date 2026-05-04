@@ -3,11 +3,11 @@ import "./AccountManage.css";
 import "../../../auth/shared.css";
 import "../../../auth/LoginModal/LoginModal.css";
 import { User, Pencil, Check, X, Loader2 } from "lucide-react";
-import { Button } from "../../../../components/Button";
-import { useAuth } from "../../../../contexts/AuthContext";
+import { Button } from "@/components/ui/Button";
+import { useAuth } from "@/contexts/AuthContext";
 import { updateProfile, changePassword } from "../../../../api/auth";
-import { getPasswordStrength } from "../../../../utils/password";
-import type { StrengthLevel } from "../../../../utils/password";
+import { getPasswordStrength } from "@/utils/password";
+import type { StrengthLevel } from "@/utils/password";
 import { STRENGTH_COLORS, STRENGTH_LABELS } from "../../../auth/LoginModal";
 
 function StrengthBar({ level }: { level: StrengthLevel }) {

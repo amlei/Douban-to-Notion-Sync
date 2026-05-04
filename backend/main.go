@@ -9,13 +9,9 @@ import (
 	"github.com/lifeink-ai/backend/internal/config"
 	"github.com/lifeink-ai/backend/internal/database"
 	"github.com/lifeink-ai/backend/internal/middleware"
-	"github.com/lifeink-ai/backend/internal/task"
-	"github.com/lifeink-ai/backend/internal/ws"
 	"github.com/lifeink-ai/backend/pkg/auth"
 	"github.com/lifeink-ai/backend/pkg/chat"
 	"github.com/lifeink-ai/backend/pkg/community"
-	pkgEmail "github.com/lifeink-ai/backend/pkg/email"
-	pkgRedis "github.com/lifeink-ai/backend/pkg/redis"
 	"github.com/lifeink-ai/backend/pkg/scraper"
 )
 
@@ -38,17 +34,14 @@ func main() {
 	}
 
 	// Init Redis
-	if err := pkgRedis.Init(); err != nil {
+	if err := database.InitRedis(); err != nil {
 		log.Fatalf("[main] Redis init failed: %v", err)
 	}
-	defer pkgRedis.Close()
+	defer database.CloseRedis()
 	log.Println("[main] Redis connected")
 
-	// Inject email sender into auth package
-	auth.SetEmailSender(pkgEmail.SendVerificationCode)
-
 	// Create task manager and scraper client
-	taskMgr := task.NewTaskManager()
+	taskMgr := community.NewTaskManager()
 	scraperClient := scraper.NewClient()
 
 	// Create services
@@ -57,7 +50,7 @@ func main() {
 	// Create handlers
 	authHandler := auth.NewAuthHandler(database.DB)
 	communityHandler := community.NewCommunityHandler(communitySvc)
-	wsHandler := ws.NewWebSocketHandler(taskMgr, database.DB)
+	wsHandler := community.NewWebSocketHandler(taskMgr, database.DB)
 	chatHandler := chat.NewChatHandler()
 
 	// Setup Gin

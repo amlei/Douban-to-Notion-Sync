@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import "../../../components/PanelModal/modal-base.css";
+import "@/components/PanelModal/modal-base.css";
 import "../shared.css";
 import "./LoginModal.css";
 import { X, Loader2, Mail, Lock, KeyRound, Eye, EyeOff } from "lucide-react";
-import { Button } from "../../../components/Button";
-import { useAuth } from "../../../contexts/AuthContext";
-import { getPasswordStrength } from "../../../utils/password";
-import type { StrengthLevel } from "../../../utils/password";
+import { Button } from "@/components/ui/Button";
+import { useAuth } from "@/contexts/AuthContext";
+import { getPasswordStrength } from "@/utils/password";
+import type { StrengthLevel } from "@/utils/password";
 
 export const STRENGTH_COLORS: Record<StrengthLevel, [string, string, string]> = {
   0: ["var(--border)", "var(--border)", "var(--border)"],

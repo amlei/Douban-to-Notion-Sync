@@ -48,16 +48,25 @@ type RefreshResponse struct {
 	ProfileJSON     string `json:"profile_json"`
 }
 
+// UnbindRequest is the request body for POST /unbind.
+type UnbindRequest struct {
+	Platform         string `json:"platform"`
+	SessionStateJSON string `json:"session_state_json"`
+}
+
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
 }
 
 func NewClient() *Client {
-	cfg := config.Get()
+	baseURL := config.GetString("scraper_url")
+	if baseURL == "" {
+		baseURL = "http://127.0.0.1:50051"
+	}
 	return &Client{
 		httpClient: &http.Client{},
-		baseURL:    cfg.ScraperURL,
+		baseURL:    baseURL,
 	}
 }
 
@@ -141,6 +150,27 @@ func (c *Client) CallRefresh(ctx context.Context, req RefreshRequest) (*RefreshR
 		return nil, fmt.Errorf("decode refresh response: %w", err)
 	}
 	return &result, nil
+}
+
+// CallUnbind calls the unbind endpoint to logout from the platform.
+func (c *Client) CallUnbind(ctx context.Context, req UnbindRequest) error {
+	body, _ := json.Marshal(req)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/unbind", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("call unbind: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unbind returned status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 // HealthCheck calls the health endpoint.

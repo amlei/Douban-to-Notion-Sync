@@ -24,6 +24,26 @@ def _find_me_in_state(data: dict) -> dict | None:
     return None
 
 
+def extract_profile_from_state(state_json: str | None) -> dict | None:
+    """Extract user profile fields from the flomo 'me' localStorage object."""
+    if not state_json:
+        return None
+    try:
+        data = json.loads(state_json)
+    except (json.JSONDecodeError, OSError):
+        return None
+    me = _find_me_in_state(data)
+    if not me:
+        return None
+    profile = {}
+    if me.get("id"):
+        profile["user_id"] = str(me["id"])
+    for key in ("name", "email", "avatar"):
+        if me.get(key):
+            profile[key] = me[key]
+    return profile if profile else None
+
+
 class SessionManager:
     """Manages Flomo Playwright session state.
 

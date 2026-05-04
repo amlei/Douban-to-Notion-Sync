@@ -76,7 +76,7 @@ export interface PlatformBindingState {
 
 export function usePlatformBinding(
   platform: string,
-  wsRef: React.MutableRefObject<WebSocket | null>,
+  wsRef: React.RefObject<WebSocket | null>,
   callbacks: PlatformBindingCallbacks,
 ): PlatformBindingState {
   const [bound, setBound] = useState(false);

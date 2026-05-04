@@ -1,6 +1,6 @@
 import { X, ArrowLeft } from "lucide-react";
-import { Button } from "../Button";
-import { ScrollArea } from "../ScrollArea";
+import { Button } from "../ui/Button";
+import { ScrollArea } from "../ui/ScrollArea";
 import "./modal-base.css";
 import "./PanelModal.css";
 import type { PanelItem } from "./types";

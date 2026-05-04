@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Search, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, X } from "lucide-react";
-import { Button } from "../../../../components/Button";
-import { Input } from "../../../../components/Input";
-import { Select } from "../../../../components/Select";
-import { ScrollArea } from "../../../../components/ScrollArea";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { ScrollArea } from "@/components/ui/ScrollArea";
 import "./Collection.css";
 import type { BookItem, MovieItem, NoteItem, BookmarkItem, MemoItem } from "../../../../types/community";
 

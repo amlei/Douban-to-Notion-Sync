@@ -124,6 +124,20 @@ async def refresh(request: Request):
     return {"error": f"Unsupported platform: {platform}"}
 
 
+@app.post("/unbind")
+async def unbind(request: Request):
+    """Logout from platform before unbinding."""
+    body = await request.json()
+    platform = body.get("platform", "")
+    session_state_json = body.get("session_state_json", "")
+
+    if platform == "flomo" and session_state_json:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _logout_flomo, session_state_json)
+
+    return {"status": "ok"}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -303,7 +317,8 @@ async def _refresh_douban(session_state_json: str):
             user_id = None
             for cookie in http.cookies:
                 if cookie.name == "dbcl2":
-                    user_id = cookie.value.split('"')[1] if '"' in cookie.value else ""
+                    raw = cookie.value.split('"')[1] if '"' in cookie.value else ""
+                    user_id = raw.split(":")[0] if raw else ""
                     break
             if not user_id:
                 # Try to get from page
@@ -567,55 +582,58 @@ async def _bind_flomo(user_id: int, channel: str):
 
         user_id_str = _extract_flomo_user_id(client.session) or uuid.uuid4().hex[:8]
         state_json = saved_state[0] or client.session._state_json
-        profile = {"user_id": user_id_str, "name": "flomo"}
+
+        from community.flomo.session import extract_profile_from_state
+        profile = extract_profile_from_state(state_json)
+        if profile is None:
+            profile = {"user_id": user_id_str, "name": "flomo"}
+        else:
+            profile.setdefault("user_id", user_id_str)
+
+        expires_at = _extract_flomo_expires(state_json)
 
         yield sse_event("bound", {
             "community_user_id": user_id_str,
-            "profile_json": json.dumps(profile),
+            "profile_json": json.dumps(profile, ensure_ascii=False),
             "session_state_json": state_json or "",
+            "session_expires_at": expires_at,
         })
 
-        # Auto-scrape memos -- also use queue for export progress
-        counts = {}
+        # Auto-scrape memos -- download zip, let Go backend parse it
         yield sse_event("scraping", {"phase": "memos", "counts": {}})
 
         export_eq = queue.Queue()
 
         def _export():
-            # Reuse the same queue for export progress callbacks
             def on_export_progress(status):
                 export_eq.put(("status", status))
 
             client._on_progress = on_export_progress
             try:
-                memos = client.export_notes()
-                export_eq.put(("done", memos))
+                zip_path = client.download_export()
+                export_eq.put(("done", zip_path))
             except Exception as e:
                 export_eq.put(("error", str(e)))
 
         loop.run_in_executor(None, _export)
 
-        memos = None
-        while memos is None:
+        zip_path = None
+        while zip_path is None:
             try:
                 tag, data = export_eq.get_nowait()
             except queue.Empty:
                 await asyncio.sleep(0.3)
                 continue
             if tag == "status":
-                yield sse_event("scraping", {"phase": data, "counts": counts})
+                yield sse_event("scraping", {"phase": data, "counts": {}})
             elif tag == "error":
                 yield sse_event("error", {"error": data})
                 return
             elif tag == "done":
-                memos = data
-
-        if memos:
-            yield sse_event("data", {"type": "memo", "items": [m.model_dump() for m in memos]})
-            counts["memos"] = len(memos)
+                zip_path = data
 
         await loop.run_in_executor(None, lambda: client.__exit__(None, None, None))
-        yield sse_event("done", {"counts": counts})
+        yield sse_event("done", {"zip_path": str(zip_path)})
 
     except Exception as e:
         log.exception("[bind/flomo] Error")
@@ -638,15 +656,11 @@ async def _sync_flomo(user_id, session_state_json, community_user_id):
         return client
 
     client = await loop.run_in_executor(None, _open)
-    counts = {}
 
     try:
         yield sse_event("progress", {"status": "scraping", "phase": "memos"})
-        memos = await loop.run_in_executor(None, client.export_notes)
-        if memos:
-            yield sse_event("data", {"type": "memo", "items": [m.model_dump() for m in memos]})
-            counts["memos"] = len(memos)
-        yield sse_event("done", {"counts": counts})
+        zip_path = await loop.run_in_executor(None, client.download_export)
+        yield sse_event("done", {"zip_path": str(zip_path)})
     except Exception as e:
         log.exception("[sync/flomo] Error")
         yield sse_event("error", {"error": str(e)})
@@ -664,18 +678,51 @@ async def _refresh_flomo(session_state_json: str):
         client.__enter__()
         client.ensure_ready()
         user_id_str = _extract_flomo_user_id(client.session) or "unknown"
+        state_json_val = client.session._state_json
         client.__exit__(None, None, None)
-        return user_id_str
+        return user_id_str, state_json_val
 
-    user_id_str = await loop.run_in_executor(None, _do)
-    profile = {"user_id": user_id_str, "name": "flomo"}
+    user_id_str, state_json_val = await loop.run_in_executor(None, _do)
+    from community.flomo.session import extract_profile_from_state
+    profile = extract_profile_from_state(state_json_val)
+    if profile is None:
+        profile = {"user_id": user_id_str, "name": "flomo"}
+    else:
+        profile.setdefault("user_id", user_id_str)
     return {
         "community_user_id": user_id_str,
-        "profile_json": json.dumps(profile),
+        "profile_json": json.dumps(profile, ensure_ascii=False),
     }
 
 
 # ---- Helpers ----
+
+
+def _logout_flomo(session_state_json: str):
+    """Open browser and click logout on flomo."""
+    from community.flomo.client import FlomoClient
+    from community.flomo import BASE_URL
+
+    client = FlomoClient(headless=True, state_json=session_state_json)
+    client.__enter__()
+    try:
+        client._start_browser()
+        page = client._page
+        page.goto(BASE_URL)
+        page.wait_for_load_state("networkidle")
+
+        menu_trigger = page.locator("div.menu-trigger-content").first
+        menu_trigger.click()
+        page.wait_for_timeout(1000)
+
+        logout_item = page.get_by_text("退出", exact=True).last
+        logout_item.click()
+        page.wait_for_timeout(2000)
+        log.info("[unbind/flomo] Logged out successfully")
+    except Exception as e:
+        log.warning("[unbind/flomo] Logout failed: %s", e)
+    finally:
+        client.__exit__(None, None, None)
 
 
 def _extract_dbcl2_expiry(state_json: str) -> str | None:
@@ -701,6 +748,21 @@ def _extract_flomo_user_id(session) -> str | None:
     if me and me.get("id"):
         return str(me["id"])
     return None
+
+
+def _extract_flomo_expires(state_json: str | None) -> str:
+    """Extract token expires_at from flomo 'me' localStorage object."""
+    if not state_json:
+        return ""
+    try:
+        data = json.loads(state_json)
+    except (json.JSONDecodeError, OSError):
+        return ""
+    from community.flomo.session import _find_me_in_state
+    me = _find_me_in_state(data)
+    if me and me.get("expires_at"):
+        return str(me["expires_at"])
+    return ""
 
 
 if __name__ == "__main__":

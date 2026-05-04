@@ -1,4 +1,4 @@
-import { useTheme, type Theme } from "../../../../contexts/ThemeContext";
+import { useTheme, type Theme } from "@/contexts/ThemeContext";
 
 const themeOptions: { value: Theme; label: string }[] = [
   { value: "light", label: "浅色" },

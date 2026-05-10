@@ -6,13 +6,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/lifeink-ai/backend/ent/user"
 	"github.com/lifeink-ai/backend/internal/database"
 	"github.com/lifeink-ai/backend/pkg/auth"
 )
 
 var whitelist = map[string]bool{
 	"/api/auth": true,
-	"/api/chat": true,
 }
 
 func AuthMiddleware() gin.HandlerFunc {
@@ -63,15 +63,16 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 		pk := int64(pkFloat)
 
-		user := &auth.User{}
-		err = database.DB.NewSelect().Model(user).Where("id = ?", pk).Scan(c.Request.Context())
-		if err != nil || user.Status != "active" {
+		u, err := database.Client.User.Query().
+			Where(user.IDEQ(pk), user.StatusEQ("active")).
+			Only(c.Request.Context())
+		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"detail": "User not found"})
 			c.Abort()
 			return
 		}
 
-		auth.SetUser(c, user)
+		auth.SetUser(c, u)
 		c.Next()
 	}
 }

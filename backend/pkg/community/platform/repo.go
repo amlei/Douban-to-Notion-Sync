@@ -2,32 +2,35 @@ package platform
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
-	"github.com/uptrace/bun"
+	"github.com/lifeink-ai/backend/ent"
+	"github.com/lifeink-ai/backend/ent/book"
+	"github.com/lifeink-ai/backend/ent/conv"
+	"github.com/lifeink-ai/backend/ent/communitymeta"
 )
 
 type CommunityMetaRepo struct {
-	db *bun.DB
+	client *ent.Client
 }
 
-func NewCommunityMetaRepo(db *bun.DB) *CommunityMetaRepo {
-	return &CommunityMetaRepo{db: db}
+func NewCommunityMetaRepo(client *ent.Client) *CommunityMetaRepo {
+	return &CommunityMetaRepo{client: client}
 }
 
-func (r *CommunityMetaRepo) GetBinding(ctx context.Context, userID int64, platformID int) (*CommunityMeta, error) {
-	meta := &CommunityMeta{}
-	err := r.db.NewSelect().Model(meta).
-		Where("user_id = ? AND platform_id = ?", userID, platformID).
-		Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return meta, nil
+func (r *CommunityMetaRepo) GetBinding(ctx context.Context, userID int64, platformID int) (*ent.CommunityMeta, error) {
+	return r.client.CommunityMeta.Query().
+		Where(
+			communitymeta.UserIDEQ(userID),
+			communitymeta.PlatformIDEQ(platformID),
+		).
+		Only(ctx)
 }
 
-func (r *CommunityMetaRepo) SaveBinding(ctx context.Context, userID int64, platformID int, communityUserID string, profile any) (*CommunityMeta, error) {
+func (r *CommunityMetaRepo) SaveBinding(ctx context.Context, userID int64, platformID int, communityUserID string, profile any) (*ent.CommunityMeta, error) {
 	profileJSON, err := json.Marshal(profile)
 	if err != nil {
 		return nil, err
@@ -36,27 +39,30 @@ func (r *CommunityMetaRepo) SaveBinding(ctx context.Context, userID int64, platf
 
 	existing, err := r.GetBinding(ctx, userID, platformID)
 	if err == nil && existing != nil {
-		existing.Bound = 1
-		existing.CommunityUserID = &communityUserID
-		existing.ProfileJSON = &profileStr
-		_, err = r.db.NewUpdate().Model(existing).WherePK().Exec(ctx)
-		return existing, err
+		return r.client.CommunityMeta.UpdateOneID(existing.ID).
+			SetBound(1).
+			SetCommunityUserID(communityUserID).
+			SetProfileJSON(profileStr).
+			Save(ctx)
 	}
 
-	meta := &CommunityMeta{
-		UserID:          userID,
-		PlatformID:      platformID,
-		Bound:           1,
-		CommunityUserID: &communityUserID,
-		ProfileJSON:     &profileStr,
-	}
-	_, err = r.db.NewInsert().Model(meta).Exec(ctx)
-	return meta, err
+	return r.client.CommunityMeta.Create().
+		SetUserID(userID).
+		SetPlatformID(platformID).
+		SetBound(1).
+		SetCommunityUserID(communityUserID).
+		SetProfileJSON(profileStr).
+		SetCreatedAt(time.Now()).
+		SetUpdatedAt(time.Now()).
+		Save(ctx)
 }
 
 func (r *CommunityMetaRepo) DeleteBinding(ctx context.Context, userID int64, platformID int) error {
-	_, err := r.db.NewDelete().Model((*CommunityMeta)(nil)).
-		Where("user_id = ? AND platform_id = ?", userID, platformID).
+	_, err := r.client.CommunityMeta.Delete().
+		Where(
+			communitymeta.UserIDEQ(userID),
+			communitymeta.PlatformIDEQ(platformID),
+		).
 		Exec(ctx)
 	return err
 }
@@ -66,10 +72,10 @@ func (r *CommunityMetaRepo) SaveSessionState(ctx context.Context, userID int64, 
 	if err != nil || meta == nil {
 		return err
 	}
-	meta.SessionStateJSON = &stateJSON
-	meta.SessionExpiresAt = expiresAt
-	_, err = r.db.NewUpdate().Model(meta).WherePK().Exec(ctx)
-	return err
+	return r.client.CommunityMeta.UpdateOneID(meta.ID).
+		SetSessionStateJSON(stateJSON).
+		SetNillableSessionExpiresAt(expiresAt).
+		Exec(ctx)
 }
 
 func (r *CommunityMetaRepo) GetSessionState(ctx context.Context, userID int64, platformID int) (string, error) {
@@ -85,24 +91,35 @@ func (r *CommunityMetaRepo) GetSessionState(ctx context.Context, userID int64, p
 
 // DataRepo handles shared book data operations.
 type DataRepo struct {
-	db *bun.DB
+	client *ent.Client
+	db     *sql.DB
 }
 
-func NewDataRepo(db *bun.DB) *DataRepo {
-	return &DataRepo{db: db}
+func NewDataRepo(client *ent.Client, db *sql.DB) *DataRepo {
+	return &DataRepo{client: client, db: db}
 }
 
 // UpsertBooks inserts or updates Douban books.
 func (r *DataRepo) UpsertBooks(ctx context.Context, userID int64, items []map[string]any) (int, error) {
 	count := 0
 	for _, item := range items {
-		book := bookRowFromMap(item)
-		book.UserID = userID
-		book.PlatformID = PlatformDouban
-		_, err := r.db.NewInsert().Model(book).
-			On("CONFLICT (user_id, url, platform_id) DO UPDATE").
-			Set("title = EXCLUDED.title, cover = EXCLUDED.cover, author = EXCLUDED.author, country = EXCLUDED.country, translator = EXCLUDED.translator, publisher = EXCLUDED.publisher, pub_date = EXCLUDED.pub_date, price = EXCLUDED.price, rating = EXCLUDED.rating, read_date = EXCLUDED.read_date, status = EXCLUDED.status, tags = EXCLUDED.tags, comment = EXCLUDED.comment").
-			Exec(ctx)
+		title := fmt.Sprintf("%v", item["title"])
+		url := fmt.Sprintf("%v", item["url"])
+		_, err := r.db.ExecContext(ctx, `
+			INSERT INTO books (user_id, platform_id, title, url, cover, author, country, translator, publisher, pub_date, price, rating, read_date, status, tags, comment, scraped_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+			ON CONFLICT (user_id, url, platform_id) DO UPDATE SET
+				title = EXCLUDED.title, cover = EXCLUDED.cover, author = EXCLUDED.author,
+				country = EXCLUDED.country, translator = EXCLUDED.translator, publisher = EXCLUDED.publisher,
+				pub_date = EXCLUDED.pub_date, price = EXCLUDED.price, rating = EXCLUDED.rating,
+				read_date = EXCLUDED.read_date, status = EXCLUDED.status, tags = EXCLUDED.tags, comment = EXCLUDED.comment`,
+			userID, PlatformDouban, title, url,
+			getStr(item, "cover"), getStr(item, "author"), getStr(item, "country"),
+			getStr(item, "translator"), getStr(item, "publisher"), getStr(item, "pub_date"),
+			getStr(item, "price"), getInt(item, "rating"), getStr(item, "read_date"),
+			getStr(item, "status"), getJSONStr(item, "tags"), getStr(item, "comment"),
+			time.Now(),
+		)
 		if err != nil {
 			return count, err
 		}
@@ -115,31 +132,47 @@ func (r *DataRepo) UpsertBooks(ctx context.Context, userID int64, items []map[st
 func (r *DataRepo) UpsertWereadBooks(ctx context.Context, userID int64, items []map[string]any) (map[string]int, error) {
 	result := map[string]int{"total": len(items), "updated": 0, "unchanged": 0}
 
-	var existing []BookRow
-	r.db.NewSelect().Model(&existing).
-		Where("user_id = ? AND platform_id = ?", userID, PlatformWeread).
-		Scan(ctx)
-	existingMap := map[string]*BookRow{}
-	for i := range existing {
-		existingMap[existing[i].URL] = &existing[i]
+	existing, err := r.client.Book.Query().
+		Where(book.UserIDEQ(userID), book.PlatformIDEQ(PlatformWeread)).
+		All(ctx)
+	if err != nil {
+		existing = []*ent.Book{}
+	}
+	existingMap := map[string]*ent.Book{}
+	for _, b := range existing {
+		existingMap[b.URL] = b
 	}
 
 	for _, item := range items {
-		book := bookRowFromMap(item)
-		book.UserID = userID
-		book.PlatformID = PlatformWeread
+		title := fmt.Sprintf("%v", item["title"])
+		url := fmt.Sprintf("%v", item["url"])
 
-		if ex, ok := existingMap[book.URL]; ok {
-			if ex.ChangeHash() == book.ChangeHash() {
+		// Build a temporary Book-like struct for hash comparison
+		tmpStatus := getStr(item, "status")
+		tmpRating := getInt(item, "rating")
+		tmpExternal := getJSONStr(item, "external")
+		tmpBook := &ent.Book{Status: tmpStatus, Rating: tmpRating, External: tmpExternal}
+
+		if ex, ok := existingMap[url]; ok {
+			if conv.BookChangeHash(ex) == conv.BookChangeHash(tmpBook) {
 				result["unchanged"]++
 				continue
 			}
 		}
 
-		_, err := r.db.NewInsert().Model(book).
-			On("CONFLICT (user_id, url, platform_id) DO UPDATE").
-			Set("title = EXCLUDED.title, cover = EXCLUDED.cover, author = EXCLUDED.author, translator = EXCLUDED.translator, publisher = EXCLUDED.publisher, price = EXCLUDED.price, rating = EXCLUDED.rating, status = EXCLUDED.status, external = EXCLUDED.external").
-			Exec(ctx)
+		_, err := r.db.ExecContext(ctx, `
+			INSERT INTO books (user_id, platform_id, title, url, cover, author, translator, publisher, price, rating, status, external, scraped_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			ON CONFLICT (user_id, url, platform_id) DO UPDATE SET
+				title = EXCLUDED.title, cover = EXCLUDED.cover, author = EXCLUDED.author,
+				translator = EXCLUDED.translator, publisher = EXCLUDED.publisher, price = EXCLUDED.price,
+				rating = EXCLUDED.rating, status = EXCLUDED.status, external = EXCLUDED.external`,
+			userID, PlatformWeread, title, url,
+			getStr(item, "cover"), getStr(item, "author"),
+			getStr(item, "translator"), getStr(item, "publisher"), getStr(item, "price"),
+			getInt(item, "rating"), getStr(item, "status"), getJSONStr(item, "external"),
+			time.Now(),
+		)
 		if err != nil {
 			return result, err
 		}
@@ -148,17 +181,16 @@ func (r *DataRepo) UpsertWereadBooks(ctx context.Context, userID int64, items []
 	return result, nil
 }
 
-func (r *DataRepo) GetBooks(ctx context.Context, userID int64) ([]BookRow, error) {
-	var books []BookRow
-	err := r.db.NewSelect().Model(&books).Where("user_id = ?", userID).Scan(ctx)
-	return books, err
+func (r *DataRepo) GetBooks(ctx context.Context, userID int64) ([]*ent.Book, error) {
+	return r.client.Book.Query().
+		Where(book.UserIDEQ(userID)).
+		All(ctx)
 }
 
 func (r *DataRepo) GetBookmarkSynckeys(ctx context.Context, userID int64) (map[string]int, error) {
-	var books []BookRow
-	err := r.db.NewSelect().Model(&books).
-		Where("user_id = ? AND platform_id = ?", userID, PlatformWeread).
-		Scan(ctx)
+	books, err := r.client.Book.Query().
+		Where(book.UserIDEQ(userID), book.PlatformIDEQ(PlatformWeread)).
+		All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -181,16 +213,19 @@ func (r *DataRepo) GetBookmarkSynckeys(ctx context.Context, userID int64) (map[s
 }
 
 func (r *DataRepo) UpdateBookmarkSynckey(ctx context.Context, userID int64, bookID string, synckey int) error {
-	book := &BookRow{}
-	err := r.db.NewSelect().Model(book).
-		Where("user_id = ? AND platform_id = ? AND url = ?", userID, PlatformWeread, bookID).
-		Scan(ctx)
+	b, err := r.client.Book.Query().
+		Where(
+			book.UserIDEQ(userID),
+			book.PlatformIDEQ(PlatformWeread),
+			book.URLEQ(bookID),
+		).
+		Only(ctx)
 	if err != nil {
 		return err
 	}
 	var ext map[string]any
-	if book.External != nil {
-		json.Unmarshal([]byte(*book.External), &ext)
+	if b.External != nil {
+		json.Unmarshal([]byte(*b.External), &ext)
 	}
 	if ext == nil {
 		ext = map[string]any{}
@@ -198,34 +233,10 @@ func (r *DataRepo) UpdateBookmarkSynckey(ctx context.Context, userID int64, book
 	ext["bookmark_synckey"] = synckey
 	extJSON, _ := json.Marshal(ext)
 	extStr := string(extJSON)
-	book.External = &extStr
-	_, err = r.db.NewUpdate().Model(book).WherePK().Column("external").Exec(ctx)
-	return err
+	return r.client.Book.UpdateOneID(b.ID).
+		SetExternal(extStr).
+		Exec(ctx)
 }
-
-func bookRowFromMap(m map[string]any) *BookRow {
-	return &BookRow{
-		Title:      fmt.Sprintf("%v", m["title"]),
-		URL:        fmt.Sprintf("%v", m["url"]),
-		Cover:      getStr(m, "cover"),
-		Author:     getStr(m, "author"),
-		Country:    getStr(m, "country"),
-		Translator: getStr(m, "translator"),
-		Publisher:  getStr(m, "publisher"),
-		PubDate:    getStr(m, "pub_date"),
-		Price:      getStr(m, "price"),
-		Rating:     getInt(m, "rating"),
-		ReadDate:   getStr(m, "read_date"),
-		Status:     getStr(m, "status"),
-		Tags:       getJSONStr(m, "tags"),
-		Comment:    getStr(m, "comment"),
-		External:   getJSONStr(m, "external"),
-	}
-}
-
-func strPtr(v string) *string   { return &v }
-func intPtr(v int) *int         { return &v }
-func int64Ptr(v int64) *int64   { return &v }
 
 func getStr(m map[string]any, key string) *string {
 	if v, ok := m[key]; ok && v != nil {
@@ -273,12 +284,3 @@ func getJSONStr(m map[string]any, key string) *string {
 	return nil
 }
 
-func strPtrEqual(a, b *string) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-	return *a == *b
-}

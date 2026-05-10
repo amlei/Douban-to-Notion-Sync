@@ -6,8 +6,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/uptrace/bun"
 
+	"github.com/lifeink-ai/backend/ent"
+	"github.com/lifeink-ai/backend/ent/conv"
 	"github.com/lifeink-ai/backend/internal/database"
 )
 
@@ -15,8 +16,8 @@ type AuthHandler struct {
 	repo *AuthRepo
 }
 
-func NewAuthHandler(db *bun.DB) *AuthHandler {
-	return &AuthHandler{repo: NewAuthRepo(db)}
+func NewAuthHandler(client *ent.Client) *AuthHandler {
+	return &AuthHandler{repo: NewAuthRepo(client)}
 }
 
 type authRequest struct {
@@ -101,13 +102,12 @@ func (h *AuthHandler) authenticateRequest(c *gin.Context) error {
 	}
 	pk := int64(pkFloat)
 
-	user := &User{}
-	err = GetDB().NewSelect().Model(user).Where("id = ?", pk).Scan(c.Request.Context())
-	if err != nil || user.Status != "active" {
+	u, err := GetClient().User.Get(c.Request.Context(), pk)
+	if err != nil || u.Status != "active" {
 		return fmt.Errorf("User not found")
 	}
 
-	SetUser(c, user)
+	SetUser(c, u)
 	return nil
 }
 
@@ -156,24 +156,24 @@ func (h *AuthHandler) verify(c *gin.Context, req *authRequest) {
 		return
 	}
 
-	user, err := h.repo.CreateUser(c.Request.Context(), email, password)
+	u, err := h.repo.CreateUser(c.Request.Context(), email, password)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "创建用户失败"})
 		return
 	}
 
-	token, err := CreateAccessToken(user.UserID, user.ID)
+	token, err := CreateAccessToken(u.UserID, u.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "创建令牌失败"})
 		return
 	}
 
-	database.StoreJWT(c.Request.Context(), user.UserID, token)
+	database.StoreJWT(c.Request.Context(), u.UserID, token)
 	c.SetCookie("access_token", token, 86400, "/", "", false, true)
 	tips := CheckPasswordStrength(password)
 	response := gin.H{
 		"access_token": token,
-		"user":         user.ToAPIDict(),
+		"user":         conv.UserToAPIDict(u),
 	}
 	if len(tips) > 0 {
 		response["password_tips"] = tips
@@ -188,23 +188,23 @@ func (h *AuthHandler) login(c *gin.Context, req *authRequest) {
 	}
 	email, password := *req.Email, *req.Password
 
-	user, err := h.repo.GetActiveUserByEmail(c.Request.Context(), email)
-	if err != nil || !VerifyPassword(password, user.PasswordHash) {
+	u, err := h.repo.GetActiveUserByEmail(c.Request.Context(), email)
+	if err != nil || !VerifyPassword(password, u.PasswordHash) {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "邮箱或密码错误"})
 		return
 	}
 
-	token, err := CreateAccessToken(user.UserID, user.ID)
+	token, err := CreateAccessToken(u.UserID, u.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "创建令牌失败"})
 		return
 	}
 
-	database.StoreJWT(c.Request.Context(), user.UserID, token)
+	database.StoreJWT(c.Request.Context(), u.UserID, token)
 	c.SetCookie("access_token", token, 86400, "/", "", false, true)
 	c.JSON(http.StatusOK, gin.H{
 		"access_token": token,
-		"user":         user.ToAPIDict(),
+		"user":         conv.UserToAPIDict(u),
 	})
 }
 
@@ -222,31 +222,31 @@ func (h *AuthHandler) logout(c *gin.Context) {
 }
 
 func (h *AuthHandler) mine(c *gin.Context) {
-	user := GetUser(c)
-	if user == nil {
+	u := GetUser(c)
+	if u == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
 		return
 	}
-	c.JSON(http.StatusOK, user.ToAPIDict())
+	c.JSON(http.StatusOK, conv.UserToAPIDict(u))
 }
 
 func (h *AuthHandler) updateProfile(c *gin.Context, req *authRequest) {
-	user := GetUser(c)
-	if user == nil {
+	u := GetUser(c)
+	if u == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
 		return
 	}
-	updated, err := h.repo.UpdateProfile(c.Request.Context(), user, req.Name, req.Avatar, req.Bio)
+	updated, err := h.repo.UpdateProfile(c.Request.Context(), u, req.Name, req.Avatar, req.Bio)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "更新失败"})
 		return
 	}
-	c.JSON(http.StatusOK, updated.ToAPIDict())
+	c.JSON(http.StatusOK, conv.UserToAPIDict(updated))
 }
 
 func (h *AuthHandler) changePassword(c *gin.Context, req *authRequest) {
-	user := GetUser(c)
-	if user == nil {
+	u := GetUser(c)
+	if u == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
 		return
 	}
@@ -254,7 +254,7 @@ func (h *AuthHandler) changePassword(c *gin.Context, req *authRequest) {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"detail": "缺少参数"})
 		return
 	}
-	if !VerifyPassword(*req.OldPassword, user.PasswordHash) {
+	if !VerifyPassword(*req.OldPassword, u.PasswordHash) {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "原密码错误"})
 		return
 	}
@@ -262,11 +262,11 @@ func (h *AuthHandler) changePassword(c *gin.Context, req *authRequest) {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"detail": "新密码至少需要 6 个字符"})
 		return
 	}
-	if err := h.repo.UpdatePassword(c.Request.Context(), user, *req.NewPassword); err != nil {
+	if err := h.repo.UpdatePassword(c.Request.Context(), u, *req.NewPassword); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "密码修改失败"})
 		return
 	}
-	database.DeleteJWT(c.Request.Context(), user.UserID)
+	database.DeleteJWT(c.Request.Context(), u.UserID)
 	tips := CheckPasswordStrength(*req.NewPassword)
 	response := gin.H{"message": "密码已修改"}
 	if len(tips) > 0 {
@@ -276,20 +276,20 @@ func (h *AuthHandler) changePassword(c *gin.Context, req *authRequest) {
 }
 
 func (h *AuthHandler) deleteAccount(c *gin.Context) {
-	user := GetUser(c)
-	if user == nil {
+	u := GetUser(c)
+	if u == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
 		return
 	}
-	if err := h.repo.SoftDelete(c.Request.Context(), user); err != nil {
+	if err := h.repo.SoftDelete(c.Request.Context(), u); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"detail": "注销失败"})
 		return
 	}
-	database.DeleteJWT(c.Request.Context(), user.UserID)
+	database.DeleteJWT(c.Request.Context(), u.UserID)
 	c.JSON(http.StatusOK, gin.H{"message": "账号已注销"})
 }
 
-// GetDB is a helper to access the database from other packages.
-func GetDB() *bun.DB {
-	return database.DB
+// GetClient is a helper to access the database client from other packages.
+func GetClient() *ent.Client {
+	return database.Client
 }

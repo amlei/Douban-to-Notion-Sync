@@ -6,8 +6,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/uptrace/bun"
 
+	"github.com/lifeink-ai/backend/ent"
+	"github.com/lifeink-ai/backend/ent/user"
 	"github.com/lifeink-ai/backend/pkg/auth"
 )
 
@@ -17,18 +18,18 @@ var upgrader = websocket.Upgrader{
 
 // Authenticator handles WebSocket authentication and connection upgrade.
 type Authenticator struct {
-	db *bun.DB
+	client *ent.Client
 }
 
-// NewAuthenticator creates an Authenticator backed by the given DB.
-func NewAuthenticator(db *bun.DB) *Authenticator {
-	return &Authenticator{db: db}
+// NewAuthenticator creates an Authenticator backed by the given Ent client.
+func NewAuthenticator(client *ent.Client) *Authenticator {
+	return &Authenticator{client: client}
 }
 
 // Handshake extracts the JWT token, validates it, looks up the user, and
 // upgrades the HTTP connection to WebSocket. Returns the authenticated user
 // and the upgraded connection.
-func (a *Authenticator) Handshake(c *gin.Context) (*auth.User, *websocket.Conn, error) {
+func (a *Authenticator) Handshake(c *gin.Context) (*ent.User, *websocket.Conn, error) {
 	token := ""
 	if cookie, err := c.Cookie("access_token"); err == nil && cookie != "" {
 		token = cookie
@@ -70,15 +71,16 @@ func (a *Authenticator) Handshake(c *gin.Context) (*auth.User, *websocket.Conn, 
 	}
 
 	ctx := c.Request.Context()
-	user := &auth.User{}
-	err = a.db.NewSelect().Model(user).Where("id = ? AND status = 'active'", pk).Scan(ctx)
+	u, err := a.client.User.Query().
+		Where(user.IDEQ(pk), user.StatusEQ("active")).
+		Only(ctx)
 	if err != nil {
 		conn.WriteMessage(websocket.CloseMessage,
 			websocket.FormatCloseMessage(4001, "auth failure"))
 		return nil, nil, err
 	}
 
-	return user, conn, nil
+	return u, conn, nil
 }
 
 // WriteJSON sends v as a text WebSocket message.

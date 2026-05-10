@@ -2,27 +2,12 @@ package douban
 
 import (
 	"encoding/json"
-	"time"
+	"fmt"
 
-	"github.com/uptrace/bun"
+	"github.com/lifeink-ai/backend/ent"
 )
 
-type MovieRow struct {
-	bun.BaseModel `bun:"table:movies"`
-	ID            int64     `bun:"id,pk,autoincrement"`
-	UserID        int64     `bun:"user_id"`
-	Title         string    `bun:"title"`
-	URL           string    `bun:"url"`
-	Cover         *string   `bun:"cover"`
-	ReleaseDate   *string   `bun:"release_date"`
-	Rating        *int      `bun:"rating"`
-	WatchDate     *string   `bun:"watch_date"`
-	Tags          *string   `bun:"tags"`
-	Comment       *string   `bun:"comment"`
-	ScrapedAt     time.Time `bun:"scraped_at"`
-}
-
-func (m *MovieRow) ToAPIDict() map[string]any {
+func MovieToAPIDict(m *ent.Movie) map[string]any {
 	var tags any
 	if m.Tags != nil {
 		json.Unmarshal([]byte(*m.Tags), &tags)
@@ -39,31 +24,32 @@ func (m *MovieRow) ToAPIDict() map[string]any {
 	}
 }
 
-type GameRow struct {
-	bun.BaseModel `bun:"table:games"`
-	ID            int64     `bun:"id,pk,autoincrement"`
-	UserID        int64     `bun:"user_id"`
-	Title         string    `bun:"title"`
-	URL           string    `bun:"url"`
-	Cover         *string   `bun:"cover"`
-	Description   *string   `bun:"description"`
-	Rating        *int      `bun:"rating"`
-	ReleaseDate   *string   `bun:"release_date"`
-	PlayDate      *string   `bun:"play_date"`
-	Tags          *string   `bun:"tags"`
-	Comment       *string   `bun:"comment"`
-	ScrapedAt     time.Time `bun:"scraped_at"`
+func getStr(m map[string]any, key string) *string {
+	if v, ok := m[key]; ok && v != nil {
+		s := fmt.Sprintf("%v", v)
+		return &s
+	}
+	return nil
 }
 
-type ReviewRow struct {
-	bun.BaseModel   `bun:"table:reviews"`
-	ID              int64     `bun:"id,pk,autoincrement"`
-	UserID          int64     `bun:"user_id"`
-	SubjectTitle    string    `bun:"subject_title"`
-	SubjectURL      *string   `bun:"subject_url"`
-	SubjectImgURL   *string   `bun:"subject_img_url"`
-	ReviewTitle     *string   `bun:"review_title"`
-	ReviewURL       *string   `bun:"review_url"`
-	Date            *string   `bun:"date"`
-	ScrapedAt       time.Time `bun:"scraped_at"`
+func getInt(m map[string]any, key string) *int {
+	if v, ok := m[key]; ok && v != nil {
+		switch n := v.(type) {
+		case float64:
+			i := int(n)
+			return &i
+		case int:
+			return &n
+		}
+	}
+	return nil
+}
+
+func getJSONStr(m map[string]any, key string) *string {
+	if v, ok := m[key]; ok && v != nil {
+		b, _ := json.Marshal(v)
+		s := string(b)
+		return &s
+	}
+	return nil
 }

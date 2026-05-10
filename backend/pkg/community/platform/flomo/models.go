@@ -2,26 +2,11 @@ package flomo
 
 import (
 	"encoding/json"
-	"fmt"
-	"time"
 
-	"github.com/uptrace/bun"
+	"github.com/lifeink-ai/backend/ent"
 )
 
-type FlomoMemoRow struct {
-	bun.BaseModel   `bun:"table:flomo_memos"`
-	ID              int64     `bun:"id,pk,autoincrement"`
-	UserID          int64     `bun:"user_id"`
-	PlatformID      int       `bun:"platform_id"`
-	Content         string    `bun:"content"`
-	Tags            *string   `bun:"tags"`
-	Files           *string   `bun:"files"`
-	MemoCreatedAt   string    `bun:"memo_created_at"`
-	UpdatedAt       time.Time `bun:"updated_at"`
-	ScrapedAt       time.Time `bun:"scraped_at"`
-}
-
-func (f *FlomoMemoRow) ToAPIDict() map[string]any {
+func FlomoMemoToAPIDict(f *ent.FlomoMemo) map[string]any {
 	var tags any = []any{}
 	if f.Tags != nil {
 		json.Unmarshal([]byte(*f.Tags), &tags)
@@ -37,15 +22,6 @@ func (f *FlomoMemoRow) ToAPIDict() map[string]any {
 		"files":           files,
 		"memo_created_at": f.MemoCreatedAt,
 		"updated_at":      f.UpdatedAt.Format("2006-01-02T15:04:05.999999+08:00"),
-	}
-}
-
-func memoRowFromMap(m map[string]any) *FlomoMemoRow {
-	return &FlomoMemoRow{
-		Content:       fmt.Sprintf("%v", m["content"]),
-		Tags:          getJSONStr(m, "tags"),
-		Files:         getJSONStr(m, "files"),
-		MemoCreatedAt: fmt.Sprintf("%v", m["memo_created_at"]),
 	}
 }
 

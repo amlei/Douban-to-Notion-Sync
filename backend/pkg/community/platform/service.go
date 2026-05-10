@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,8 +13,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/uptrace/bun"
-
+	"github.com/lifeink-ai/backend/ent"
+	"github.com/lifeink-ai/backend/ent/conv"
 	"github.com/lifeink-ai/backend/internal/config"
 	"github.com/lifeink-ai/backend/internal/database"
 	"github.com/lifeink-ai/backend/internal/task"
@@ -265,26 +266,28 @@ type TaskManager = task.Manager[BindData]
 // ---------------------------------------------------------------------------
 
 type CommunityService struct {
-	db          *bun.DB
-	taskMgr     *TaskManager
-	scraper     *ScraperClient
-	metaRepo    *CommunityMetaRepo
-	dataRepo    *DataRepo
-	doubanRepo  *douban.DoubanRepo
-	wereadRepo  *weread.WereadRepo
-	flomoRepo   *flomo.FlomoRepo
+	client     *ent.Client
+	db         *sql.DB
+	taskMgr    *TaskManager
+	scraper    *ScraperClient
+	metaRepo   *CommunityMetaRepo
+	dataRepo   *DataRepo
+	doubanRepo *douban.DoubanRepo
+	wereadRepo *weread.WereadRepo
+	flomoRepo  *flomo.FlomoRepo
 }
 
-func NewCommunityService(db *bun.DB, taskMgr *TaskManager) *CommunityService {
+func NewCommunityService(client *ent.Client, db *sql.DB, taskMgr *TaskManager) *CommunityService {
 	return &CommunityService{
+		client:     client,
 		db:         db,
 		taskMgr:    taskMgr,
 		scraper:    NewScraperClient(),
-		metaRepo:   NewCommunityMetaRepo(db),
-		dataRepo:   NewDataRepo(db),
-		doubanRepo: douban.NewDoubanRepo(db),
-		wereadRepo: weread.NewWereadRepo(db),
-		flomoRepo:  flomo.NewFlomoRepo(db),
+		metaRepo:   NewCommunityMetaRepo(client),
+		dataRepo:   NewDataRepo(client, db),
+		doubanRepo: douban.NewDoubanRepo(client, db),
+		wereadRepo: weread.NewWereadRepo(client, db),
+		flomoRepo:  flomo.NewFlomoRepo(client, db),
 	}
 }
 
@@ -317,7 +320,7 @@ func (s *CommunityService) Status(ctx context.Context, userID int64, platform st
 
 	row, err := s.metaRepo.GetBinding(ctx, userID, platformID)
 	if err == nil && row != nil && row.Bound == 1 {
-		result := row.ToAPIDict()
+		result := conv.CommunityMetaToAPIDict(row)
 		result["status"] = "bound"
 		return result, nil
 	}
@@ -655,29 +658,29 @@ func (s *CommunityService) GetCommunityData(ctx context.Context, userID int64) (
 
 	doubanBooks := []map[string]any{}
 	wereadBooks := []map[string]any{}
-	for i := range allBooks {
-		if allBooks[i].PlatformID == PlatformDouban {
-			doubanBooks = append(doubanBooks, allBooks[i].ToAPIDict())
-		} else if allBooks[i].PlatformID == PlatformWeread {
-			wereadBooks = append(wereadBooks, allBooks[i].ToAPIDict())
+	for _, b := range allBooks {
+		if b.PlatformID == PlatformDouban {
+			doubanBooks = append(doubanBooks, conv.BookToAPIDict(b))
+		} else if b.PlatformID == PlatformWeread {
+			wereadBooks = append(wereadBooks, conv.BookToAPIDict(b))
 		}
 	}
 
 	movieList := []map[string]any{}
-	for i := range movies {
-		movieList = append(movieList, movies[i].ToAPIDict())
+	for _, m := range movies {
+		movieList = append(movieList, douban.MovieToAPIDict(m))
 	}
 	noteList := []map[string]any{}
-	for i := range notes {
-		noteList = append(noteList, notes[i].ToAPIDict())
+	for _, n := range notes {
+		noteList = append(noteList, weread.NoteToAPIDict(n))
 	}
 	bookmarkList := []map[string]any{}
-	for i := range bookmarks {
-		bookmarkList = append(bookmarkList, bookmarks[i].ToAPIDict())
+	for _, b := range bookmarks {
+		bookmarkList = append(bookmarkList, weread.BookmarkToAPIDict(b))
 	}
 	memoList := []map[string]any{}
-	for i := range memos {
-		memoList = append(memoList, memos[i].ToAPIDict())
+	for _, m := range memos {
+		memoList = append(memoList, flomo.FlomoMemoToAPIDict(m))
 	}
 
 	return map[string]any{
@@ -696,6 +699,6 @@ func (s *CommunityService) GetCommunityData(ctx context.Context, userID int64) (
 	}, nil
 }
 
-func (s *CommunityService) GetDB() *bun.DB {
-	return database.DB
+func (s *CommunityService) GetClient() *ent.Client {
+	return database.Client
 }

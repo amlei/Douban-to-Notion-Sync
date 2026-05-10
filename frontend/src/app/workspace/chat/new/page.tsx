@@ -6,11 +6,9 @@ import {
   PromptInputTextarea,
   PromptInputSubmit,
 } from "@/components/ai-elements/prompt-input";
-import { useChatStore } from "@/core/chat/use-chat-store";
 
 export default function NewChatPage() {
   const router = useRouter();
-  const store = useChatStore();
 
   return (
     <div className="flex-1 flex items-center justify-center p-4">
@@ -19,9 +17,7 @@ export default function NewChatPage() {
         <PromptInput
           onSubmit={({ text }) => {
             if (!text.trim()) return;
-            const id = store.createChat();
-            store.updateTitle(id, text.slice(0, 30));
-            router.replace(`/workspace/chat/${id}?q=${encodeURIComponent(text)}`);
+            router.replace(`/workspace/chat/0?q=${encodeURIComponent(text)}`);
           }}
           className="rounded-xl border border-input bg-background"
         >

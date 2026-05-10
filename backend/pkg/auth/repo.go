@@ -4,51 +4,41 @@ import (
 	"context"
 	"time"
 
-	"github.com/uptrace/bun"
+	"github.com/lifeink-ai/backend/ent"
+	"github.com/lifeink-ai/backend/ent/user"
 )
 
 type AuthRepo struct {
-	db *bun.DB
+	client *ent.Client
 }
 
-func NewAuthRepo(db *bun.DB) *AuthRepo {
-	return &AuthRepo{db: db}
+func NewAuthRepo(client *ent.Client) *AuthRepo {
+	return &AuthRepo{client: client}
 }
 
-func (r *AuthRepo) GetActiveUserByEmail(ctx context.Context, email string) (*User, error) {
-	user := &User{}
-	err := r.db.NewSelect().Model(user).
-		Where("email = ? AND status = 'active'", email).
-		Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return user, nil
+func (r *AuthRepo) GetActiveUserByEmail(ctx context.Context, email string) (*ent.User, error) {
+	return r.client.User.Query().
+		Where(
+			user.EmailEQ(email),
+			user.StatusEQ("active"),
+		).
+		Only(ctx)
 }
 
-func (r *AuthRepo) GetDeletedUserByEmail(ctx context.Context, email string) (*User, error) {
-	user := &User{}
-	err := r.db.NewSelect().Model(user).
-		Where("email = ? AND status = 'deleted'", email).
-		Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return user, nil
+func (r *AuthRepo) GetDeletedUserByEmail(ctx context.Context, email string) (*ent.User, error) {
+	return r.client.User.Query().
+		Where(
+			user.EmailEQ(email),
+			user.StatusEQ("deleted"),
+		).
+		Only(ctx)
 }
 
-func (r *AuthRepo) GetUserByPK(ctx context.Context, pk int64) (*User, error) {
-	user := &User{}
-	err := r.db.NewSelect().Model(user).
-		Where("id = ?", pk).
-		Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return user, nil
+func (r *AuthRepo) GetUserByPK(ctx context.Context, pk int64) (*ent.User, error) {
+	return r.client.User.Get(ctx, pk)
 }
 
-func (r *AuthRepo) CreateUser(ctx context.Context, email, password string) (*User, error) {
+func (r *AuthRepo) CreateUser(ctx context.Context, email, password string) (*ent.User, error) {
 	uid := GenerateUserID()
 	name := "星迹 " + uid
 	hash, err := HashPassword(password)
@@ -56,68 +46,65 @@ func (r *AuthRepo) CreateUser(ctx context.Context, email, password string) (*Use
 		return nil, err
 	}
 
+	now := time.Now()
+
 	// Check for deleted user to reuse
 	deleted, err := r.GetDeletedUserByEmail(ctx, email)
 	if err == nil && deleted != nil {
-		deleted.UserID = uid
-		deleted.PasswordHash = hash
-		deleted.Name = name
-		deleted.Status = "active"
-		deleted.EmailVerified = true
-		deleted.UpdatedAt = time.Now()
-		_, err = r.db.NewUpdate().Model(deleted).WherePK().Exec(ctx)
+		updated, err := r.client.User.UpdateOneID(deleted.ID).
+			SetUserID(uid).
+			SetPasswordHash(hash).
+			SetName(name).
+			SetStatus("active").
+			SetEmailVerified(true).
+			SetUpdatedAt(now).
+			Save(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return deleted, nil
+		return updated, nil
 	}
 
-	user := &User{
-		UserID:        uid,
-		Email:         email,
-		PasswordHash:  hash,
-		Name:          name,
-		Status:        "active",
-		EmailVerified: true,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-	}
-	_, err = r.db.NewInsert().Model(user).Exec(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return user, nil
+	return r.client.User.Create().
+		SetUserID(uid).
+		SetEmail(email).
+		SetPasswordHash(hash).
+		SetName(name).
+		SetStatus("active").
+		SetEmailVerified(true).
+		SetCreatedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx)
 }
 
-func (r *AuthRepo) UpdateProfile(ctx context.Context, user *User, name, avatar, bio *string) (*User, error) {
+func (r *AuthRepo) UpdateProfile(ctx context.Context, u *ent.User, name, avatar, bio *string) (*ent.User, error) {
+	update := r.client.User.UpdateOneID(u.ID)
 	if name != nil {
-		user.Name = *name
+		update = update.SetName(*name)
 	}
 	if avatar != nil {
-		user.Avatar = avatar
+		update = update.SetAvatar(*avatar)
 	}
 	if bio != nil {
-		user.Bio = bio
+		update = update.SetBio(*bio)
 	}
-	user.UpdatedAt = time.Now()
-	_, err := r.db.NewUpdate().Model(user).WherePK().Exec(ctx)
-	return user, err
+	return update.SetUpdatedAt(time.Now()).Save(ctx)
 }
 
-func (r *AuthRepo) UpdatePassword(ctx context.Context, user *User, newPassword string) error {
+func (r *AuthRepo) UpdatePassword(ctx context.Context, u *ent.User, newPassword string) error {
 	hash, err := HashPassword(newPassword)
 	if err != nil {
 		return err
 	}
-	user.PasswordHash = hash
-	user.UpdatedAt = time.Now()
-	_, err = r.db.NewUpdate().Model(user).WherePK().Exec(ctx)
-	return err
+	return r.client.User.UpdateOneID(u.ID).
+		SetPasswordHash(hash).
+		SetUpdatedAt(time.Now()).
+		Exec(context.Background())
 }
 
-func (r *AuthRepo) SoftDelete(ctx context.Context, user *User) error {
-	user.Status = "deleted"
-	user.UpdatedAt = time.Now()
-	_, err := r.db.NewUpdate().Model(user).WherePK().Exec(ctx)
-	return err
+func (r *AuthRepo) SoftDelete(ctx context.Context, u *ent.User) error {
+	return r.client.User.UpdateOneID(u.ID).
+		SetStatus("deleted").
+		SetUpdatedAt(time.Now()).
+		Exec(context.Background())
 }

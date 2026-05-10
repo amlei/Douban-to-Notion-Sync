@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useChat } from "@ai-sdk/react";
-import { useSearchParams } from "next/navigation";
+import { DefaultChatTransport } from "ai";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Streamdown } from "streamdown";
 import {
   Conversation,
@@ -28,50 +29,110 @@ import { streamdownPlugins, humanMessagePlugins } from "@/core/streamdown/plugin
 import { useChatStore } from "@/core/chat/use-chat-store";
 
 export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {
-  const [chatId, setChatId] = useState<string>("");
   const store = useChatStore();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const initialSentRef = useRef(false);
+  const sessionIdRef = useRef<string>("");
+  const messagesLoadedRef = useRef(false);
+  const [mounted, setMounted] = useState(false);
 
+  // Resolve route param once
   useEffect(() => {
-    params.then((p) => setChatId(p.id));
+    params.then((p) => {
+      sessionIdRef.current = p.id;
+      setMounted(true);
+    });
   }, [params]);
+
+  // Custom fetch that captures X-Session-Id from response headers
+  const capturedSessionId = useRef<string | null>(null);
+  const transport = useRef(
+    new DefaultChatTransport({
+      api: "/api/chat",
+      credentials: "include",
+      fetch: async (input, init) => {
+        const res = await globalThis.fetch(input, init);
+        const sid = res.headers.get("x-session-id");
+        if (sid && (!sessionIdRef.current || sessionIdRef.current === "0")) {
+          capturedSessionId.current = sid;
+        }
+        return res;
+      },
+      prepareSendMessagesRequest({ messages }) {
+        const lastMsg = messages[messages.length - 1];
+        let content = "";
+        if (lastMsg) {
+          for (const part of lastMsg.parts) {
+            if (part.type === "text") {
+              content = part.text;
+              break;
+            }
+          }
+        }
+        const sid = sessionIdRef.current;
+        return {
+          body: {
+            content,
+            session_id: sid && sid !== "0" ? sid : undefined,
+          },
+        };
+      },
+    }),
+  ).current;
+
+  // Stable chat id -- never changes during streaming
+  const chatId = useRef(`chat-${Date.now()}`).current;
 
   const { messages, sendMessage, status, setMessages, stop } = useChat({
     id: chatId,
-    api: "/api/chat",
-    onFinish: ({ message }) => {
-      store.saveMessages(chatId, [...messages, message]);
-      const title = messages[0]?.parts
-        ?.filter((p) => p.type === "text")
-        .map((p) => p.text)
-        .join("")
-        .slice(0, 30);
-      if (title) store.updateTitle(chatId, title);
+    transport,
+    onFinish: () => {
+      // If we captured a new session_id, update and navigate
+      if (capturedSessionId.current) {
+        const sid = capturedSessionId.current;
+        sessionIdRef.current = sid;
+        capturedSessionId.current = null;
+        store.addSession({ id: sid, title: "", createdAt: Date.now() });
+        router.replace(`/workspace/chat/${sid}`, { scroll: false });
+      }
+      store.refreshSessions();
     },
   });
 
+  // Load messages from backend for existing sessions (skip "0" = new session)
+  useEffect(() => {
+    if (!mounted) return;
+    const id = sessionIdRef.current;
+    if (!id || id === "0" || messagesLoadedRef.current) return;
+    messagesLoadedRef.current = true;
+    store.loadMessages(id).then((loaded) => {
+      if (loaded && loaded.length > 0) {
+        setMessages(loaded);
+      }
+    });
+  }, [mounted, store, setMessages]);
+
   // Auto-send the initial message passed from /chat/new via ?q= param
   useEffect(() => {
-    if (!chatId || initialSentRef.current || status !== "ready") return;
+    if (!mounted || initialSentRef.current || status !== "ready") return;
+    const id = sessionIdRef.current;
+    if (id && id !== "0") return;
     const q = searchParams.get("q");
     if (!q) return;
     initialSentRef.current = true;
     sendMessage({ text: q });
-  }, [chatId, status, searchParams, sendMessage]);
+  }, [mounted, status, searchParams, sendMessage]);
 
-  const prevChatIdRef = useRef(chatId);
-  useEffect(() => {
-    if (!chatId) return;
-    if (prevChatIdRef.current !== chatId) {
-      store.saveMessages(prevChatIdRef.current, messages);
-      const saved = store.loadMessages(chatId);
-      if (saved) setMessages(saved);
-      prevChatIdRef.current = chatId;
-    }
-  }, [chatId, messages, setMessages, store]);
+  const handleSend = useCallback(
+    (text: string) => {
+      if (!text.trim() || status !== "ready") return;
+      sendMessage({ text });
+    },
+    [status, sendMessage],
+  );
 
-  if (!chatId) return null;
+  if (!mounted) return null;
 
   return (
     <div className="flex flex-col h-full">
@@ -115,10 +176,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       <div className="p-4">
         <div className="max-w-3xl mx-auto">
           <PromptInput
-            onSubmit={({ text }) => {
-              if (!text.trim() || status !== "ready") return;
-              sendMessage({ text });
-            }}
+            onSubmit={({ text }) => handleSend(text)}
             className="rounded-xl border border-input bg-background"
           >
             <PromptInputTextarea placeholder="继续对话..." />

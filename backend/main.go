@@ -14,7 +14,7 @@ import (
 	"github.com/lifeink-ai/backend/internal/ws"
 	"github.com/lifeink-ai/backend/pkg/auth"
 	"github.com/lifeink-ai/backend/pkg/community/platform"
-	"github.com/lifeink-ai/backend/pkg/query"
+	"github.com/lifeink-ai/backend/pkg/chat"
 )
 
 func main() {
@@ -46,19 +46,20 @@ func main() {
 	taskMgr := task.NewManager[platform.BindData]()
 
 	// Create services
-	communitySvc := platform.NewCommunityService(database.DB, taskMgr)
+	communitySvc := platform.NewCommunityService(database.Client, database.SQLDB, taskMgr)
 
 	// Create handlers
-	authHandler := auth.NewAuthHandler(database.DB)
+	authHandler := auth.NewAuthHandler(database.Client)
 	communityHandler := platform.NewCommunityHandler(communitySvc)
-	wsAuth := ws.NewAuthenticator(database.DB)
+	wsAuth := ws.NewAuthenticator(database.Client)
 	wsHandler := platform.NewWebSocketHandler(wsAuth, taskMgr)
 
 	// Load LLM config and create client
 	var llmCfg openai.LLMConfig
 	config.Unmarshal("llm", &llmCfg)
 	llmClient := openai.NewClient(llmCfg)
-	queryHandler := query.NewQueryHandler(llmClient)
+	chatRepo := chat.NewChatRepo(database.Client)
+	chatHandler := chat.NewChatHandler(llmClient, chatRepo)
 
 	// Setup Gin
 	r := gin.Default()
@@ -71,7 +72,7 @@ func main() {
 	authHandler.RegisterRoutes(r)
 	communityHandler.RegisterRoutes(r)
 	wsHandler.RegisterRoutes(r)
-	queryHandler.RegisterRoutes(r)
+	chatHandler.RegisterRoutes(r)
 
 	// Start server
 	addr := ":8000"

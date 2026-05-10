@@ -1,28 +1,13 @@
 package weread
 
 import (
-	"time"
+	"encoding/json"
+	"fmt"
 
-	"github.com/uptrace/bun"
+	"github.com/lifeink-ai/backend/ent"
 )
 
-type BookmarkRow struct {
-	bun.BaseModel `bun:"table:bookmarks"`
-	ID            int64     `bun:"id,pk,autoincrement"`
-	UserID        int64     `bun:"user_id"`
-	PlatformID    int       `bun:"platform_id"`
-	BookID        string    `bun:"book_id"`
-	BookTitle     *string   `bun:"book_title"`
-	MarkText      string    `bun:"mark_text"`
-	ChapterName   *string   `bun:"chapter_name"`
-	ChapterIdx    *int      `bun:"chapter_idx"`
-	Style         *int      `bun:"style"`
-	CreateTime    *int64    `bun:"create_time"`
-	BookmarkID    *string   `bun:"bookmark_id"`
-	ScrapedAt     time.Time `bun:"scraped_at"`
-}
-
-func (b *BookmarkRow) ToAPIDict() map[string]any {
+func BookmarkToAPIDict(b *ent.Bookmark) map[string]any {
 	return map[string]any{
 		"platform_id":  b.PlatformID,
 		"book_id":      b.BookID,
@@ -36,19 +21,7 @@ func (b *BookmarkRow) ToAPIDict() map[string]any {
 	}
 }
 
-type NoteRow struct {
-	bun.BaseModel `bun:"table:notes"`
-	ID            int64     `bun:"id,pk,autoincrement"`
-	UserID        int64     `bun:"user_id"`
-	Title         string    `bun:"title"`
-	URL           *string   `bun:"url"`
-	Date          *string   `bun:"date"`
-	Location      *string   `bun:"location"`
-	Body          *string   `bun:"body"`
-	ScrapedAt     time.Time `bun:"scraped_at"`
-}
-
-func (n *NoteRow) ToAPIDict() map[string]any {
+func NoteToAPIDict(n *ent.Note) map[string]any {
 	return map[string]any{
 		"title":    n.Title,
 		"url":      n.URL,
@@ -56,4 +29,50 @@ func (n *NoteRow) ToAPIDict() map[string]any {
 		"location": n.Location,
 		"body":     n.Body,
 	}
+}
+
+func getStr(m map[string]any, key string) *string {
+	if v, ok := m[key]; ok && v != nil {
+		s := fmt.Sprintf("%v", v)
+		return &s
+	}
+	return nil
+}
+
+func getInt(m map[string]any, key string) *int {
+	if v, ok := m[key]; ok && v != nil {
+		switch n := v.(type) {
+		case float64:
+			i := int(n)
+			return &i
+		case int:
+			return &n
+		}
+	}
+	return nil
+}
+
+func getInt64(m map[string]any, key string) *int64 {
+	if v, ok := m[key]; ok && v != nil {
+		switch n := v.(type) {
+		case float64:
+			i := int64(n)
+			return &i
+		case int:
+			i := int64(n)
+			return &i
+		case int64:
+			return &n
+		}
+	}
+	return nil
+}
+
+func getJSONStr(m map[string]any, key string) *string {
+	if v, ok := m[key]; ok && v != nil {
+		b, _ := json.Marshal(v)
+		s := string(b)
+		return &s
+	}
+	return nil
 }

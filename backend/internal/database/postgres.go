@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/dialect/pgdialect"
-	"github.com/uptrace/bun/driver/pgdriver"
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	_ "github.com/lib/pq"
 
+	"github.com/lifeink-ai/backend/ent"
+	"github.com/lifeink-ai/backend/ent/migrate"
 	"github.com/lifeink-ai/backend/internal/config"
 )
 
@@ -27,11 +29,14 @@ func (p *PostgresConfig) DSN() string {
 	if port == 0 {
 		port = 5432
 	}
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		p.User, p.Password, p.Host, port, p.DBName, p.SSLMode)
+	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		p.Host, port, p.User, p.Password, p.DBName, p.SSLMode)
 }
 
-var DB *bun.DB
+var (
+	Client *ent.Client
+	SQLDB  *sql.DB
+)
 
 func Init(ctx context.Context) error {
 	cfg := PostgresConfig{
@@ -43,32 +48,44 @@ func Init(ctx context.Context) error {
 	}
 	config.Unmarshal("postgres", &cfg)
 
-	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.DSN())))
-	DB = bun.NewDB(sqldb, pgdialect.New())
-
-	if err := DB.Ping(); err != nil {
+	sqldb, err := sql.Open("postgres", cfg.DSN())
+	if err != nil {
+		return fmt.Errorf("open postgres: %w", err)
+	}
+	if err := sqldb.Ping(); err != nil {
 		return fmt.Errorf("ping postgres: %w", err)
 	}
+	SQLDB = sqldb
 
-	log.Println("[db] PostgreSQL connected")
+	drv := entsql.OpenDB(dialect.Postgres, sqldb)
+	Client = ent.NewClient(ent.Driver(drv))
+
+	// Auto-migration: creates missing tables/columns, does not drop existing data.
+	if err := Client.Schema.Create(
+		ctx,
+		migrate.WithForeignKeys(false),
+	); err != nil {
+		return fmt.Errorf("auto-migrate: %w", err)
+	}
+
+	log.Println("[db] PostgreSQL connected (ent auto-migration done)")
 	return nil
 }
 
 func SeedPlatforms(ctx context.Context) error {
-	type platform struct {
-		ID   int    `bun:"id"`
-		Name string `bun:"name"`
-	}
-	platforms := []platform{
+	platforms := []struct {
+		ID   int
+		Name string
+	}{
 		{ID: 1, Name: "douban"},
 		{ID: 2, Name: "weread"},
 		{ID: 3, Name: "flomo"},
 	}
 	for _, p := range platforms {
-		_, err := DB.NewInsert().
-			Model(&p).
-			On("CONFLICT (id) DO NOTHING").
-			Exec(ctx)
+		_, err := SQLDB.ExecContext(ctx,
+			`INSERT INTO platforms (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`,
+			p.ID, p.Name,
+		)
 		if err != nil {
 			return fmt.Errorf("seed platform %s: %w", p.Name, err)
 		}
@@ -78,7 +95,7 @@ func SeedPlatforms(ctx context.Context) error {
 }
 
 func Close() {
-	if DB != nil {
-		DB.Close()
+	if Client != nil {
+		Client.Close()
 	}
 }

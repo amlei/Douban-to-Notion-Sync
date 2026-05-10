@@ -1,26 +1,273 @@
-package community
+package platform
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/uptrace/bun"
 
+	"github.com/lifeink-ai/backend/internal/config"
 	"github.com/lifeink-ai/backend/internal/database"
-	"github.com/lifeink-ai/backend/pkg/community/douban"
-	"github.com/lifeink-ai/backend/pkg/community/flomo"
-	"github.com/lifeink-ai/backend/pkg/community/weread"
-	"github.com/lifeink-ai/backend/pkg/scraper"
+	"github.com/lifeink-ai/backend/internal/task"
+	"github.com/lifeink-ai/backend/pkg/community/platform/douban"
+	"github.com/lifeink-ai/backend/pkg/community/platform/flomo"
+	"github.com/lifeink-ai/backend/pkg/community/platform/weread"
 )
+
+// ---------------------------------------------------------------------------
+// Scraper client (HTTP + SSE)
+// ---------------------------------------------------------------------------
+
+// SSEEvent represents a Server-Sent Event from the Python scraper service.
+type SSEEvent struct {
+	Event string
+	Data  string
+}
+
+// BindRequest is the request body for POST /bind.
+type BindRequest struct {
+	Platform string `json:"platform"`
+	UserID   int64  `json:"user_id"`
+	Channel  string `json:"channel"`
+}
+
+// SyncRequest is the request body for POST /sync.
+type SyncRequest struct {
+	Platform          string         `json:"platform"`
+	UserID            int64          `json:"user_id"`
+	SessionStateJSON  string         `json:"session_state_json"`
+	CommunityUserID   string         `json:"community_user_id"`
+	ExistingBookURLs  []string       `json:"existing_book_urls"`
+	ExistingMovieURLs []string       `json:"existing_movie_urls"`
+	BookmarkSynckeys  map[string]int `json:"bookmark_synckeys"`
+}
+
+// RefreshRequest is the request body for POST /refresh.
+type RefreshRequest struct {
+	Platform         string `json:"platform"`
+	SessionStateJSON string `json:"session_state_json"`
+}
+
+// RefreshResponse is the response body for POST /refresh.
+type RefreshResponse struct {
+	CommunityUserID string `json:"community_user_id"`
+	ProfileJSON     string `json:"profile_json"`
+}
+
+// UnbindRequest is the request body for POST /unbind.
+type UnbindRequest struct {
+	Platform         string `json:"platform"`
+	SessionStateJSON string `json:"session_state_json"`
+}
+
+type ScraperClient struct {
+	httpClient *http.Client
+	baseURL    string
+}
+
+func NewScraperClient() *ScraperClient {
+	baseURL := config.GetString("scraper_url")
+	if baseURL == "" {
+		baseURL = "http://127.0.0.1:50051"
+	}
+	return &ScraperClient{
+		httpClient: &http.Client{},
+		baseURL:    baseURL,
+	}
+}
+
+// CallBind starts a bind operation and returns a channel of SSE events.
+func (c *ScraperClient) CallBind(ctx context.Context, req BindRequest) (<-chan SSEEvent, error) {
+	body, _ := json.Marshal(req)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/bind", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("call bind: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("bind returned status %d", resp.StatusCode)
+	}
+
+	ch := make(chan SSEEvent, 64)
+	go func() {
+		defer close(ch)
+		defer resp.Body.Close()
+		parseSSE(resp.Body, ch)
+	}()
+	return ch, nil
+}
+
+// CallSync starts a sync operation and returns a channel of SSE events.
+func (c *ScraperClient) CallSync(ctx context.Context, req SyncRequest) (<-chan SSEEvent, error) {
+	body, _ := json.Marshal(req)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/sync", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("call sync: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("sync returned status %d", resp.StatusCode)
+	}
+
+	ch := make(chan SSEEvent, 64)
+	go func() {
+		defer close(ch)
+		defer resp.Body.Close()
+		parseSSE(resp.Body, ch)
+	}()
+	return ch, nil
+}
+
+// CallRefresh calls the refresh endpoint.
+func (c *ScraperClient) CallRefresh(ctx context.Context, req RefreshRequest) (*RefreshResponse, error) {
+	body, _ := json.Marshal(req)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/refresh", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("call refresh: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("refresh returned status %d", resp.StatusCode)
+	}
+
+	var result RefreshResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode refresh response: %w", err)
+	}
+	return &result, nil
+}
+
+// CallUnbind calls the unbind endpoint to logout from the platform.
+func (c *ScraperClient) CallUnbind(ctx context.Context, req UnbindRequest) error {
+	body, _ := json.Marshal(req)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/unbind", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("call unbind: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unbind returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// HealthCheck calls the health endpoint.
+func (c *ScraperClient) HealthCheck(ctx context.Context) error {
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/health", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("health check failed: %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func parseSSE(reader io.Reader, ch chan<- SSEEvent) {
+	scanner := bufio.NewScanner(reader)
+	var event string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if len(line) == 0 {
+			continue
+		}
+		if line[0] == ':' {
+			continue
+		}
+		colon := -1
+		for i, c := range line {
+			if c == ':' {
+				colon = i
+				break
+			}
+		}
+		field := line
+		value := ""
+		if colon >= 0 {
+			field = line[:colon]
+			if colon+1 < len(line) && line[colon+1] == ' ' {
+				value = line[colon+2:]
+			} else if colon+1 < len(line) {
+				value = line[colon+1:]
+			}
+		}
+
+		switch field {
+		case "event":
+			event = value
+		case "data":
+			ch <- SSEEvent{Event: event, Data: value}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Task types
+// ---------------------------------------------------------------------------
+
+// BindData holds community-specific task payload data.
+type BindData struct {
+	QRBase64     string
+	UserID       string
+	Profile      any
+	Error        string
+	ScrapePhase  string
+	ScrapeCounts map[string]int64
+}
+
+// BindTask and TaskManager are type aliases over the generic task package.
+type BindTask = task.Entry[BindData]
+type TaskManager = task.Manager[BindData]
+
+// ---------------------------------------------------------------------------
+// Community service
+// ---------------------------------------------------------------------------
 
 type CommunityService struct {
 	db          *bun.DB
 	taskMgr     *TaskManager
-	scraper     *scraper.Client
+	scraper     *ScraperClient
 	metaRepo    *CommunityMetaRepo
 	dataRepo    *DataRepo
 	doubanRepo  *douban.DoubanRepo
@@ -28,11 +275,11 @@ type CommunityService struct {
 	flomoRepo   *flomo.FlomoRepo
 }
 
-func NewCommunityService(db *bun.DB, taskMgr *TaskManager, scraperClient *scraper.Client) *CommunityService {
+func NewCommunityService(db *bun.DB, taskMgr *TaskManager) *CommunityService {
 	return &CommunityService{
 		db:         db,
 		taskMgr:    taskMgr,
-		scraper:    scraperClient,
+		scraper:    NewScraperClient(),
 		metaRepo:   NewCommunityMetaRepo(db),
 		dataRepo:   NewDataRepo(db),
 		doubanRepo: douban.NewDoubanRepo(db),
@@ -42,23 +289,23 @@ func NewCommunityService(db *bun.DB, taskMgr *TaskManager, scraperClient *scrape
 }
 
 func (s *CommunityService) Status(ctx context.Context, userID int64, platform string) (map[string]any, error) {
-	t := s.taskMgr.GetTask(userID, platform)
+	t := s.taskMgr.Get(userID, platform)
 	if t != nil && t.Status != "idle" {
 		result := map[string]any{"status": t.Status}
-		if t.QRBase64 != "" {
-			result["qr_base64"] = t.QRBase64
+		if t.Data.QRBase64 != "" {
+			result["qr_base64"] = t.Data.QRBase64
 		}
 		if t.Status == "scraping" {
-			result["scrape_phase"] = t.ScrapePhase
-			result["scrape_counts"] = t.ScrapeCounts
+			result["scrape_phase"] = t.Data.ScrapePhase
+			result["scrape_counts"] = t.Data.ScrapeCounts
 		}
 		if t.Status == "bound" {
-			result["user_id"] = t.UserID
-			result["profile"] = t.Profile
-			result["scrape_counts"] = t.ScrapeCounts
+			result["user_id"] = t.Data.UserID
+			result["profile"] = t.Data.Profile
+			result["scrape_counts"] = t.Data.ScrapeCounts
 		}
 		if t.Status == "failed" {
-			result["error"] = t.Error
+			result["error"] = t.Data.Error
 		}
 		return result, nil
 	}
@@ -87,23 +334,23 @@ func (s *CommunityService) StatusAll(ctx context.Context, userID int64) (map[str
 }
 
 func (s *CommunityService) StartBind(ctx context.Context, userID int64, platform, channel string) (string, error) {
-	t := s.taskMgr.CreateTask(userID, platform)
+	t := s.taskMgr.Create(userID, platform, BindData{ScrapeCounts: make(map[string]int64)})
 	go s.runBind(userID, platform, channel, t)
-	return t.TaskID, nil
+	return t.ID, nil
 }
 
 func (s *CommunityService) runBind(userID int64, platform, channel string, t *BindTask) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	events, err := s.scraper.CallBind(ctx, scraper.BindRequest{
+	events, err := s.scraper.CallBind(ctx, BindRequest{
 		Platform: platform,
 		UserID:   userID,
 		Channel:  channel,
 	})
 	if err != nil {
 		t.Status = "failed"
-		t.Error = err.Error()
+		t.Data.Error = err.Error()
 		t.Notify()
 		return
 	}
@@ -118,22 +365,22 @@ func (s *CommunityService) runBind(userID int64, platform, channel string, t *Bi
 				t.Status = status
 			}
 			if qr, ok := payload["qr_base64"].(string); ok {
-				t.QRBase64 = qr
+				t.Data.QRBase64 = qr
 			}
 			if phase, ok := payload["phase"].(string); ok {
-				t.ScrapePhase = phase
+				t.Data.ScrapePhase = phase
 			}
 			t.Notify()
 
 		case "bound":
 			t.Status = "bound"
 			if uid, ok := payload["community_user_id"].(string); ok {
-				t.UserID = uid
+				t.Data.UserID = uid
 			}
 			if profileJSON, ok := payload["profile_json"].(string); ok {
 				var profile any
 				json.Unmarshal([]byte(profileJSON), &profile)
-				t.Profile = profile
+				t.Data.Profile = profile
 			}
 			if stateJSON, ok := payload["session_state_json"].(string); ok {
 				expiresAt := ""
@@ -141,7 +388,7 @@ func (s *CommunityService) runBind(userID int64, platform, channel string, t *Bi
 					expiresAt = v
 				}
 				platformID := PlatformNameToID(platform)
-				s.metaRepo.SaveBinding(ctx, userID, platformID, t.UserID, t.Profile)
+				s.metaRepo.SaveBinding(ctx, userID, platformID, t.Data.UserID, t.Data.Profile)
 				s.metaRepo.SaveSessionState(ctx, userID, platformID, stateJSON, &expiresAt)
 			}
 			t.Notify()
@@ -149,12 +396,12 @@ func (s *CommunityService) runBind(userID int64, platform, channel string, t *Bi
 		case "scraping":
 			t.Status = "scraping"
 			if phase, ok := payload["phase"].(string); ok {
-				t.ScrapePhase = phase
+				t.Data.ScrapePhase = phase
 			}
 			if counts, ok := payload["counts"].(map[string]any); ok {
 				for k, v := range counts {
 					if n, ok := v.(float64); ok {
-						t.ScrapeCounts[k] = int64(n)
+						t.Data.ScrapeCounts[k] = int64(n)
 					}
 				}
 			}
@@ -168,7 +415,7 @@ func (s *CommunityService) runBind(userID int64, platform, channel string, t *Bi
 			if counts, ok := payload["counts"].(map[string]any); ok {
 				for k, v := range counts {
 					if n, ok := v.(float64); ok {
-						t.ScrapeCounts[k] = int64(n)
+						t.Data.ScrapeCounts[k] = int64(n)
 					}
 				}
 			}
@@ -181,9 +428,9 @@ func (s *CommunityService) runBind(userID int64, platform, channel string, t *Bi
 		case "error":
 			t.Status = "failed"
 			if errMsg, ok := payload["error"].(string); ok {
-				t.Error = errMsg
+				t.Data.Error = errMsg
 			} else {
-				t.Error = evt.Data
+				t.Data.Error = evt.Data
 			}
 			t.Notify()
 			return
@@ -203,12 +450,12 @@ func (s *CommunityService) StartSync(ctx context.Context, userID int64, platform
 		sessionState = *row.SessionStateJSON
 	}
 
-	t := s.taskMgr.CreateTask(userID, platform)
+	t := s.taskMgr.Create(userID, platform, BindData{ScrapeCounts: make(map[string]int64)})
 	t.Status = "scraping"
 	communityUserID := *row.CommunityUserID
 
 	go s.runSync(userID, platform, communityUserID, sessionState, t)
-	return t.TaskID, nil
+	return t.ID, nil
 }
 
 func (s *CommunityService) runSync(userID int64, platform, communityUserID, sessionState string, t *BindTask) {
@@ -233,18 +480,18 @@ func (s *CommunityService) runSync(userID int64, platform, communityUserID, sess
 		bookmarkSynckeys = synckeys
 	}
 
-	events, err := s.scraper.CallSync(ctx, scraper.SyncRequest{
-		Platform:         platform,
-		UserID:           userID,
-		SessionStateJSON: sessionState,
-		CommunityUserID:  communityUserID,
-		ExistingBookURLs: existingBookURLs,
+	events, err := s.scraper.CallSync(ctx, SyncRequest{
+		Platform:          platform,
+		UserID:            userID,
+		SessionStateJSON:  sessionState,
+		CommunityUserID:   communityUserID,
+		ExistingBookURLs:  existingBookURLs,
 		ExistingMovieURLs: existingMovieURLs,
-		BookmarkSynckeys: bookmarkSynckeys,
+		BookmarkSynckeys:  bookmarkSynckeys,
 	})
 	if err != nil {
 		t.Status = "failed"
-		t.Error = err.Error()
+		t.Data.Error = err.Error()
 		t.Notify()
 		return
 	}
@@ -259,7 +506,7 @@ func (s *CommunityService) runSync(userID int64, platform, communityUserID, sess
 				t.Status = status
 			}
 			if phase, ok := payload["phase"].(string); ok {
-				t.ScrapePhase = phase
+				t.Data.ScrapePhase = phase
 			}
 			t.Notify()
 
@@ -271,7 +518,7 @@ func (s *CommunityService) runSync(userID int64, platform, communityUserID, sess
 			if counts, ok := payload["counts"].(map[string]any); ok {
 				for k, v := range counts {
 					if n, ok := v.(float64); ok {
-						t.ScrapeCounts[k] = int64(n)
+						t.Data.ScrapeCounts[k] = int64(n)
 					}
 				}
 			}
@@ -284,9 +531,9 @@ func (s *CommunityService) runSync(userID int64, platform, communityUserID, sess
 		case "error":
 			t.Status = "failed"
 			if errMsg, ok := payload["error"].(string); ok {
-				t.Error = errMsg
+				t.Data.Error = errMsg
 			} else {
-				t.Error = evt.Data
+				t.Data.Error = evt.Data
 			}
 			t.Notify()
 			return
@@ -347,9 +594,9 @@ func (s *CommunityService) Refresh(ctx context.Context, userID int64, platform s
 		sessionState = *row.SessionStateJSON
 	}
 
-	resp, err := s.scraper.CallRefresh(ctx, scraper.RefreshRequest{
-		Platform:          platform,
-		SessionStateJSON:  sessionState,
+	resp, err := s.scraper.CallRefresh(ctx, RefreshRequest{
+		Platform:         platform,
+		SessionStateJSON: sessionState,
 	})
 	if err != nil {
 		return nil, err
@@ -360,10 +607,10 @@ func (s *CommunityService) Refresh(ctx context.Context, userID int64, platform s
 	s.metaRepo.SaveBinding(ctx, userID, platformID, resp.CommunityUserID, profile)
 
 	return map[string]any{
-		"bound":      true,
-		"platform":   platform,
-		"user_id":    resp.CommunityUserID,
-		"profile":    profile,
+		"bound":    true,
+		"platform": platform,
+		"user_id":  resp.CommunityUserID,
+		"profile":  profile,
 	}, nil
 }
 
@@ -372,7 +619,7 @@ func (s *CommunityService) Unbind(ctx context.Context, userID int64, platform st
 		platformID := PlatformNameToID(platform)
 		if row, err := s.metaRepo.GetBinding(ctx, userID, platformID); err == nil && row != nil && row.SessionStateJSON != nil {
 			if state := *row.SessionStateJSON; state != "" {
-				go s.scraper.CallUnbind(context.Background(), scraper.UnbindRequest{
+				go s.scraper.CallUnbind(context.Background(), UnbindRequest{
 					Platform:         platform,
 					SessionStateJSON: state,
 				})
@@ -382,7 +629,7 @@ func (s *CommunityService) Unbind(ctx context.Context, userID int64, platform st
 
 	platformID := PlatformNameToID(platform)
 	err := s.metaRepo.DeleteBinding(ctx, userID, platformID)
-	s.taskMgr.ClearPlatformTask(userID, platform)
+	s.taskMgr.ClearKey(userID, platform)
 	return err
 }
 
@@ -394,7 +641,7 @@ func (s *CommunityService) processFlomoZip(ctx context.Context, userID int64, zi
 	}
 	if len(memos) > 0 {
 		s.flomoRepo.UpsertFlomoMemos(ctx, userID, memos)
-		t.ScrapeCounts["memos"] = int64(len(memos))
+		t.Data.ScrapeCounts["memos"] = int64(len(memos))
 	}
 	os.Remove(zipPath)
 }

@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import { env } from "../../env";
 import type { BindStatus, PollResult, CommunityData } from "../community/types";
 
 async function bindAction(
@@ -49,9 +50,10 @@ export interface BindWsCallbacks {
 }
 
 export function connectBindWs(platform: string, cb: BindWsCallbacks): WebSocket {
-  const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  // Cookie-based auth: browser sends cookies automatically on WebSocket handshake
-  const ws = new WebSocket(`${proto}//${location.host}/api/community/ws?platform=${platform}`);
+  // Connect directly to Go backend -- Next.js Turbopack rewrite does not proxy WebSocket.
+  // Cookie is host-only on localhost, so browser sends it to localhost:8000 automatically.
+  const wsUrl = env.NEXT_PUBLIC_BACKEND_WS_URL || "ws://localhost:8000";
+  const ws = new WebSocket(`${wsUrl}/api/community/ws?platform=${platform}`);
 
   ws.onmessage = (e) => {
     const data: PollResult = JSON.parse(e.data);

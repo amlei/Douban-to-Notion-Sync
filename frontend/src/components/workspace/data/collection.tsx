@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Search, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import type { BookItem, MovieItem, NoteItem, BookmarkItem, MemoItem } from "@/core/community/types";
 
 type DataTabKey = "books" | "movies" | "notes" | "bookmarks" | "memos";
@@ -330,7 +331,7 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
 
       {/* Gallery / List */}
       {isGalleryTab ? (
-        <div className={`grid gap-3 ${dataTab === "memos" ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" : "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6"}`}>
+        <div className={`grid gap-2 ${dataTab === "memos" ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4" : "grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8"}`}>
           {dataTab === "books" && paged.map((item) => {
             const b = item as BookItem;
             const isWeread = b.platform_id === 2;
@@ -467,6 +468,11 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
       {/* Detail Modal */}
       <Dialog open={!!detailItem} onOpenChange={(open) => { if (!open) setDetailItem(null); }}>
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <VisuallyHidden>
+            <DialogTitle>
+              {detailItem?.type === "book" ? "图书详情" : detailItem?.type === "movie" ? "电影详情" : "笔记详情"}
+            </DialogTitle>
+          </VisuallyHidden>
           {detailItem?.type === "book" && (
             <div className="space-y-4">
               <div className="flex gap-4">

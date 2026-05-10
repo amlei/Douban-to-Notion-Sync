@@ -8,6 +8,7 @@ import {
   LogIn,
   LogOut,
   HelpCircle,
+  Database,
 } from "lucide-react";
 import {
   Sidebar,
@@ -93,6 +94,21 @@ export function WorkspaceSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild>
+                  <Link href="/workspace/data">
+                    <Database size={16} />
+                    <span>数据管理</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>

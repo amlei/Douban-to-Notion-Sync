@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Settings, User, Database, FileText, ArrowLeft } from "lucide-react";
+import { Settings, User, FileText } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,19 +11,13 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { cn } from "@/lib/utils";
 import { GeneralSettings } from "@/components/workspace/settings/general-settings";
 import { AccountManage } from "@/components/workspace/settings/account-manage";
-import { DataManage } from "@/components/workspace/settings/data-manage";
 import { ServiceAgreement } from "@/components/workspace/settings/service-agreement";
-import { SyncManage } from "@/components/workspace/settings/sync-manage";
-import { Collection } from "@/components/workspace/data/collection";
-import { useCommunityDataState } from "@/components/workspace/settings/sync-manage";
 
-type TabKey = "general" | "account" | "data" | "terms";
-type DataView = "sync" | "data" | null;
+type TabKey = "general" | "account" | "terms";
 
 const tabs: { key: TabKey; label: string; icon: typeof Settings }[] = [
   { key: "general", label: "通用设置", icon: Settings },
   { key: "account", label: "帐号管理", icon: User },
-  { key: "data", label: "数据管理", icon: Database },
   { key: "terms", label: "服务协议", icon: FileText },
 ];
 
@@ -35,39 +29,7 @@ export function SettingsDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [tab, setTab] = useState<TabKey>("general");
-  const [dataView, setDataView] = useState<DataView>(null);
 
-  // Full-panel mode: sync/data views take the entire dialog
-  if (dataView) {
-    return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[85vw] sm:max-w-[1200px] h-[80vh] min-w-[560px] min-h-[400px] p-0 gap-0 overflow-hidden">
-          <VisuallyHidden>
-            <DialogTitle>{dataView === "sync" ? "同步数据" : "查看数据"}</DialogTitle>
-          </VisuallyHidden>
-          <div className="flex flex-col h-full">
-            <div className="flex items-center gap-2 px-6 pt-5 pb-3">
-              <button
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => setDataView(null)}
-              >
-                <ArrowLeft size={18} />
-              </button>
-              <h2 className="text-sm font-semibold text-foreground">
-                {dataView === "sync" ? "同步数据" : "查看数据"}
-              </h2>
-            </div>
-            <div className="flex-1 overflow-y-auto px-6 pb-6">
-              {dataView === "sync" && <SyncManage />}
-              {dataView === "data" && <DataViewContent />}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  // Normal mode: left sidebar + right content
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[85vw] sm:max-w-[1200px] h-[80vh] min-w-[560px] min-h-[400px] p-0 gap-0 overflow-hidden">
@@ -113,36 +75,11 @@ export function SettingsDialog({
               {tab === "account" && (
                 <AccountManage onLogoutSuccess={() => onOpenChange(false)} />
               )}
-              {tab === "data" && (
-                <DataManage onNavigate={setDataView} />
-              )}
               {tab === "terms" && <ServiceAgreement />}
             </div>
           </div>
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function DataViewContent() {
-  const {
-    doubanBound, wereadBound, flomoBound,
-    books, wereadBooks, movies, notes,
-    wereadBookmarks, flomoMemos,
-  } = useCommunityDataState();
-
-  return (
-    <Collection
-      doubanBound={doubanBound}
-      wereadBound={wereadBound}
-      flomoBound={flomoBound}
-      books={books}
-      wereadBooks={wereadBooks}
-      movies={movies}
-      notes={notes}
-      wereadBookmarks={wereadBookmarks}
-      flomoMemos={flomoMemos}
-    />
   );
 }

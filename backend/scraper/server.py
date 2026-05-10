@@ -2,6 +2,9 @@
 
 Runs on :50051 (internal only). Provides SSE-streamed bind/sync/refresh endpoints.
 No database access - returns scraped data as JSON via SSE events.
+
+Uses multiprocessing (not threads) to run Playwright sync code in isolated
+processes, avoiding the "Sync API inside asyncio loop" error on Playwright >=1.40.
 """
 
 from __future__ import annotations
@@ -10,6 +13,7 @@ import asyncio
 import base64
 import json
 import logging
+import multiprocessing as mp
 import queue
 import sys
 import uuid
@@ -47,6 +51,79 @@ app = FastAPI(lifespan=lifespan)
 def sse_event(event: str, data: Any) -> str:
     payload = json.dumps(data, ensure_ascii=False) if isinstance(data, dict) else str(data)
     return f"event: {event}\ndata: {payload}\n\n"
+
+
+# ---- Subprocess drain helpers ----
+
+
+async def _drain_process_events(eq: mp.Queue, p: mp.Process, task_id: str | None = None):
+    """Drain SSE events from a subprocess mp.Queue and yield them as SSE strings.
+
+    The subprocess puts (event_name, data) tuples into eq.
+    Terminates the process if still alive after draining.
+    """
+    try:
+        while True:
+            got_event = False
+            while True:
+                try:
+                    event_name, data = eq.get_nowait()
+                except queue.Empty:
+                    break
+                got_event = True
+
+                if event_name == "done":
+                    yield sse_event("done", data)
+                    return
+                if event_name == "error":
+                    yield sse_event("error", data if isinstance(data, dict) else {"error": data})
+                    return
+                # Inject task_id into progress events for bind flows
+                if event_name == "progress" and task_id and isinstance(data, dict):
+                    data.setdefault("task_id", task_id)
+                yield sse_event(event_name, data)
+
+            if not p.is_alive() and not got_event:
+                yield sse_event("error", {"error": "Process terminated unexpectedly"})
+                return
+
+            await asyncio.sleep(0.3)
+    finally:
+        p.join(timeout=5)
+        if p.is_alive():
+            p.terminate()
+            p.join()
+
+
+async def _run_subprocess_single(target, args_tuple):
+    """Run a subprocess that returns a single (tag, data) result via mp.Queue."""
+    eq = mp.Queue()
+    p = mp.Process(target=target, args=(eq,) + args_tuple)
+    p.start()
+
+    try:
+        while True:
+            try:
+                tag, data = eq.get_nowait()
+                break
+            except queue.Empty:
+                pass
+            if not p.is_alive():
+                try:
+                    tag, data = eq.get_nowait()
+                    break
+                except queue.Empty:
+                    return {"error": "Process terminated unexpectedly"}
+            await asyncio.sleep(0.3)
+    finally:
+        p.join(timeout=5)
+        if p.is_alive():
+            p.terminate()
+            p.join()
+
+    if tag in ("result", "error"):
+        return data
+    return {"error": "Unexpected response from subprocess"}
 
 
 # ---- Endpoints ----
@@ -132,8 +209,11 @@ async def unbind(request: Request):
     session_state_json = body.get("session_state_json", "")
 
     if platform == "flomo" and session_state_json:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _logout_flomo, session_state_json)
+        p = mp.Process(target=_logout_flomo_subprocess, args=(session_state_json,))
+        p.start()
+        while p.is_alive():
+            await asyncio.sleep(0.5)
+        p.join()
 
     return {"status": "ok"}
 
@@ -143,77 +223,58 @@ async def health():
     return {"status": "ok"}
 
 
-# ---- Douban ----
+# ---- Douban subprocess functions (module-level for macOS spawn) ----
 
 
-async def _bind_douban(user_id: int, channel: str):
+def _bind_douban_subprocess(eq: mp.Queue, user_id: int, channel: str):
     from community.douban.client import DoubanClient
     from community.douban.session import SessionManager
+    from community.douban.scrapers.books import BooksScraper
+    from community.douban.scrapers.movies import MoviesScraper
 
-    task_id = uuid.uuid4().hex[:12]
-    yield sse_event("progress", {"task_id": task_id, "status": "pending"})
+    def capture_qr(data_bytes):
+        eq.put(("progress", {
+            "status": "pending",
+            "qr_base64": f"data:image/png;base64,{base64.b64encode(data_bytes).decode()}",
+        }))
 
-    eq = queue.Queue()
+    def capture_progress(status):
+        eq.put(("progress", {"status": status}))
 
-    def _run():
-        def capture_qr(data_bytes):
-            eq.put(("qr", base64.b64encode(data_bytes).decode()))
-
-        def capture_progress(status):
-            eq.put(("status", status))
-
-        client = DoubanClient(
-            headless=False,
-            channel=channel,
-            on_qr=capture_qr,
-            on_progress=capture_progress,
-        )
-        client.__enter__()
+    client = DoubanClient(
+        headless=False,
+        channel=channel,
+        on_qr=capture_qr,
+        on_progress=capture_progress,
+    )
+    client.__enter__()
+    try:
+        client.ensure_ready()
+    except Exception as e:
+        eq.put(("error", {"error": str(e)}))
         try:
-            client.ensure_ready()
-        except Exception as e:
-            eq.put(("error", str(e)))
-            return
-        eq.put(("done", client))
-
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _run)
-
-    # Drain events from the background thread and yield SSE events
-    client = None
-    while client is None:
-        try:
-            tag, data = eq.get_nowait()
-        except queue.Empty:
-            await asyncio.sleep(0.3)
-            continue
-        if tag == "qr":
-            yield sse_event("progress", {"task_id": task_id, "status": "pending", "qr_base64": f"data:image/png;base64,{data}"})
-        elif tag == "status":
-            yield sse_event("progress", {"task_id": task_id, "status": data})
-        elif tag == "error":
-            yield sse_event("error", {"error": data})
-            return
-        elif tag == "done":
-            client = data
+            client.__exit__(None, None, None)
+        except Exception:
+            pass
+        return
 
     try:
-        yield sse_event("progress", {"task_id": task_id, "status": "logged_in"})
-        yield sse_event("progress", {"task_id": task_id, "status": "fetching_profile"})
+        eq.put(("progress", {"status": "logged_in"}))
+        eq.put(("progress", {"status": "fetching_profile"}))
 
-        profile = await loop.run_in_executor(None, client.scrape_profile)
+        profile = client.scrape_profile()
         state_json = client._session._state_json
         community_user_id = client.user_id
 
-        yield sse_event("bound", {
+        eq.put(("bound", {
             "community_user_id": community_user_id,
             "profile_json": profile.model_dump_json(),
             "session_state_json": state_json or "",
             "session_expires_at": _extract_dbcl2_expiry(state_json) if state_json else "",
-        })
+        }))
 
-        # Close browser
-        await loop.run_in_executor(None, lambda: client.__exit__(None, None, None))
+        # Close browser -- douban auto-scrape uses requests, not Playwright
+        client.__exit__(None, None, None)
 
         # Auto-scrape
         counts = {}
@@ -221,99 +282,80 @@ async def _bind_douban(user_id: int, channel: str):
             mgr = SessionManager(state_json=state_json)
             http = mgr.build_http_session()
             try:
-                from community.douban.scrapers.books import BooksScraper
-                from community.douban.scrapers.movies import MoviesScraper
-
-                yield sse_event("scraping", {"phase": "books", "counts": {}})
-                books = await loop.run_in_executor(
-                    None,
-                    lambda: BooksScraper(http, community_user_id).scrape(max_pages=0),
-                )
+                eq.put(("scraping", {"phase": "books", "counts": {}}))
+                books = BooksScraper(http, community_user_id).scrape(max_pages=0)
                 if books:
-                    yield sse_event("data", {"type": "book", "items": [b.model_dump() for b in books]})
+                    eq.put(("data", {"type": "book", "items": [b.model_dump() for b in books]}))
                     counts["books"] = len(books)
 
-                yield sse_event("scraping", {"phase": "movies", "counts": counts})
-                movies = await loop.run_in_executor(
-                    None,
-                    lambda: MoviesScraper(http, community_user_id).scrape(max_pages=0),
-                )
+                eq.put(("scraping", {"phase": "movies", "counts": counts}))
+                movies = MoviesScraper(http, community_user_id).scrape(max_pages=0)
                 if movies:
-                    yield sse_event("data", {"type": "movie", "items": [m.model_dump() for m in movies]})
+                    eq.put(("data", {"type": "movie", "items": [m.model_dump() for m in movies]}))
                     counts["movies"] = len(movies)
             finally:
                 http.close()
 
-        yield sse_event("done", {"counts": counts})
-
+        eq.put(("done", {"counts": counts}))
     except Exception as e:
-        log.exception("[bind/douban] Error")
-        yield sse_event("error", {"error": str(e)})
+        log.exception("[bind/douban] Error in subprocess")
+        eq.put(("error", {"error": str(e)}))
+        try:
+            client.__exit__(None, None, None)
+        except Exception:
+            pass
 
 
-async def _sync_douban(user_id, session_state_json, community_user_id, existing_book_urls, existing_movie_urls):
+def _sync_douban_subprocess(eq: mp.Queue, user_id, session_state_json, community_user_id, existing_book_urls, existing_movie_urls):
     from community.douban.session import SessionManager
+    from community.douban.scrapers.books import BooksScraper
+    from community.douban.scrapers.movies import MoviesScraper
 
     if not session_state_json:
-        yield sse_event("error", {"error": "No session state"})
+        eq.put(("error", {"error": "No session state"}))
         return
 
-    loop = asyncio.get_event_loop()
-    counts = {}
-
-    def _scrape():
+    try:
         mgr = SessionManager(state_json=session_state_json)
         http = mgr.build_http_session()
         try:
-            from community.douban.scrapers.books import BooksScraper
-            from community.douban.scrapers.movies import MoviesScraper
-
+            eq.put(("progress", {"status": "scraping", "phase": "books"}))
             books = BooksScraper(http, community_user_id).scrape(
                 max_pages=0,
                 existing_urls=set(existing_book_urls),
             )
+
+            eq.put(("progress", {"status": "scraping", "phase": "movies"}))
             movies = MoviesScraper(http, community_user_id).scrape(
                 max_pages=0,
                 existing_urls=set(existing_movie_urls),
             )
-            return books, movies
         finally:
             http.close()
 
-    yield sse_event("progress", {"status": "scraping", "phase": "books"})
-    books, movies = await loop.run_in_executor(None, _scrape)
+        counts = {}
+        if books:
+            eq.put(("data", {"type": "book", "items": [b.model_dump() for b in books]}))
+            counts["books"] = len(books)
+        if movies:
+            eq.put(("data", {"type": "movie", "items": [m.model_dump() for m in movies]}))
+            counts["movies"] = len(movies)
 
-    if books:
-        yield sse_event("data", {"type": "book", "items": [b.model_dump() for b in books]})
-        counts["books"] = len(books)
-
-    yield sse_event("progress", {"status": "scraping", "phase": "movies"})
-    if movies:
-        yield sse_event("data", {"type": "movie", "items": [m.model_dump() for m in movies]})
-        counts["movies"] = len(movies)
-
-    yield sse_event("done", {"counts": counts})
+        eq.put(("done", {"counts": counts}))
+    except Exception as e:
+        log.exception("[sync/douban] Error in subprocess")
+        eq.put(("error", {"error": str(e)}))
 
 
-async def _refresh_douban(session_state_json: str):
+def _refresh_douban_subprocess(eq: mp.Queue, session_state_json: str):
     from community.douban.session import SessionManager
     from community.douban.scrapers.profile import ProfileScraper
 
-    loop = asyncio.get_event_loop()
-
-    def _do():
+    try:
         mgr = SessionManager(state_json=session_state_json)
         http = mgr.build_http_session()
         try:
-            # Need user_id from cookies
-            import requests
-            resp = http.get("https://www.douban.com/mine/")
-            if resp.url.endswith("/mine/"):
-                # Extract user_id from URL redirect
-                pass
-            # Fallback: scrape profile from /mine/ page
-            from community.douban.scrapers.profile import ProfileScraper
-            # Parse user_id from cookies
+            import re
             user_id = None
             for cookie in http.cookies:
                 if cookie.name == "dbcl2":
@@ -321,269 +363,227 @@ async def _refresh_douban(session_state_json: str):
                     user_id = raw.split(":")[0] if raw else ""
                     break
             if not user_id:
-                # Try to get from page
                 resp = http.get("https://www.douban.com/mine/")
-                import re
                 match = re.search(r'douban\.com/people/([^/"]+)', resp.text)
                 if match:
                     user_id = match.group(1)
             if not user_id:
-                return None, ""
+                eq.put(("error", {"error": "Failed to get user_id"}))
+                return
             profile = ProfileScraper(http, user_id).scrape()
-            return user_id, profile
+            eq.put(("result", {
+                "community_user_id": user_id,
+                "profile_json": profile.model_dump_json(),
+            }))
         finally:
             http.close()
-
-    user_id, profile = await loop.run_in_executor(None, _do)
-    if profile is None:
-        return {"error": "Failed to refresh profile"}
-
-    return {
-        "community_user_id": user_id,
-        "profile_json": profile.model_dump_json(),
-    }
+    except Exception as e:
+        eq.put(("error", {"error": str(e)}))
 
 
-# ---- WeRead ----
+# ---- WeRead subprocess functions (module-level for macOS spawn) ----
 
 
-async def _bind_weread(user_id: int, channel: str):
+def _bind_weread_subprocess(eq: mp.Queue, user_id: int, channel: str):
     from community.weread.client import WeReadClient
+    from community.weread.scrapers.shelf import scrape_shelf
+    from community.weread.scrapers.bookmarks import scrape_bookmarks
 
-    task_id = uuid.uuid4().hex[:12]
-    yield sse_event("progress", {"task_id": task_id, "status": "pending"})
+    def capture_qr(data_bytes):
+        eq.put(("progress", {
+            "status": "pending",
+            "qr_base64": f"data:image/png;base64,{base64.b64encode(data_bytes).decode()}",
+        }))
 
-    eq = queue.Queue()
+    def capture_progress(status):
+        eq.put(("progress", {"status": status}))
 
-    def _run():
-        def capture_qr(data_bytes):
-            eq.put(("qr", base64.b64encode(data_bytes).decode()))
-
-        def capture_progress(status):
-            eq.put(("status", status))
-
-        client = WeReadClient(
-            headless=False,
-            channel=channel,
-            on_qr=capture_qr,
-            on_progress=capture_progress,
-        )
-        client.__enter__()
+    client = WeReadClient(
+        headless=False,
+        channel=channel,
+        on_qr=capture_qr,
+        on_progress=capture_progress,
+    )
+    client.__enter__()
+    try:
+        client.ensure_ready()
+    except Exception as e:
+        eq.put(("error", {"error": str(e)}))
         try:
-            client.ensure_ready()
-        except Exception as e:
-            eq.put(("error", str(e)))
-            return
-        eq.put(("done", client))
-
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _run)
-
-    client = None
-    while client is None:
-        try:
-            tag, data = eq.get_nowait()
-        except queue.Empty:
-            await asyncio.sleep(0.3)
-            continue
-        if tag == "qr":
-            yield sse_event("progress", {"task_id": task_id, "status": "pending", "qr_base64": f"data:image/png;base64,{data}"})
-        elif tag == "status":
-            yield sse_event("progress", {"task_id": task_id, "status": data})
-        elif tag == "error":
-            yield sse_event("error", {"error": data})
-            return
-        elif tag == "done":
-            client = data
+            client.__exit__(None, None, None)
+        except Exception:
+            pass
+        return
 
     try:
-        yield sse_event("progress", {"task_id": task_id, "status": "logged_in"})
-        yield sse_event("progress", {"task_id": task_id, "status": "fetching_profile"})
+        eq.put(("progress", {"status": "logged_in"}))
+        eq.put(("progress", {"status": "fetching_profile"}))
 
-        yield sse_event("progress", {"task_id": task_id, "status": "logged_in"})
-        yield sse_event("progress", {"task_id": task_id, "status": "fetching_profile"})
-
-        profile = await loop.run_in_executor(None, client.scrape_profile)
+        profile = client.scrape_profile()
         vid = client.vid
         state_json = client._session._state_json
 
-        yield sse_event("bound", {
+        eq.put(("bound", {
             "community_user_id": vid,
             "profile_json": profile.model_dump_json(),
             "session_state_json": state_json or "",
-        })
+        }))
 
         # Auto-scrape
         counts = {}
 
-        yield sse_event("scraping", {"phase": "books", "counts": {}})
-        from community.weread.scrapers.shelf import scrape_shelf
-        books = await loop.run_in_executor(None, lambda: scrape_shelf(client._page, vid))
+        eq.put(("scraping", {"phase": "books", "counts": {}}))
+        books = scrape_shelf(client._page, vid)
         if books:
-            yield sse_event("data", {"type": "book", "items": [b.model_dump() for b in books]})
+            eq.put(("data", {"type": "book", "items": [b.model_dump() for b in books]}))
             counts["books"] = len(books)
 
-        yield sse_event("scraping", {"phase": "bookmarks", "counts": counts})
-        from community.weread.scrapers.bookmarks import scrape_bookmarks
+        eq.put(("scraping", {"phase": "bookmarks", "counts": counts}))
         book_ids = [b.book_id for b in books] if books else []
         all_bookmarks = []
         for book_id in book_ids[:50]:
-            bms, _ = await loop.run_in_executor(
-                None, lambda bid=book_id: scrape_bookmarks(client._page, bid, 0)
-            )
+            bms, _ = scrape_bookmarks(client._page, book_id, 0)
             if bms:
                 all_bookmarks.extend(bms)
         if all_bookmarks:
-            yield sse_event("data", {"type": "bookmark", "items": [b.model_dump() for b in all_bookmarks]})
+            eq.put(("data", {"type": "bookmark", "items": [b.model_dump() for b in all_bookmarks]}))
             counts["bookmarks"] = len(all_bookmarks)
 
-        yield sse_event("done", {"counts": counts})
-
-        await loop.run_in_executor(None, lambda: client.__exit__(None, None, None))
-
+        eq.put(("done", {"counts": counts}))
     except Exception as e:
-        log.exception("[bind/weread] Error")
-        yield sse_event("error", {"error": str(e)})
+        log.exception("[bind/weread] Error in subprocess")
+        eq.put(("error", {"error": str(e)}))
+    finally:
+        try:
+            client.__exit__(None, None, None)
+        except Exception:
+            pass
 
 
-async def _sync_weread(user_id, session_state_json, community_user_id, bookmark_synckeys):
+def _sync_weread_subprocess(eq: mp.Queue, user_id, session_state_json, community_user_id, bookmark_synckeys):
     from community.weread.client import WeReadClient
     from community.weread.scrapers.shelf import scrape_shelf
     from community.weread.scrapers.bookmarks import scrape_bookmarks
 
     if not session_state_json:
-        yield sse_event("error", {"error": "No session state"})
+        eq.put(("error", {"error": "No session state"}))
         return
 
-    loop = asyncio.get_event_loop()
-
-    def _open():
+    client = None
+    try:
         client = WeReadClient(headless=True, state_json=session_state_json)
         client.__enter__()
         client.ensure_ready()
-        return client
 
-    client = await loop.run_in_executor(None, _open)
-    counts = {}
+        counts = {}
 
-    try:
-        yield sse_event("progress", {"status": "scraping", "phase": "books"})
-        books = await loop.run_in_executor(None, lambda: scrape_shelf(client._page, community_user_id))
+        eq.put(("progress", {"status": "scraping", "phase": "books"}))
+        books = scrape_shelf(client._page, community_user_id)
         if books:
-            yield sse_event("data", {"type": "book", "items": [b.model_dump() for b in books]})
+            eq.put(("data", {"type": "book", "items": [b.model_dump() for b in books]}))
             counts["books"] = len(books)
 
-        yield sse_event("progress", {"status": "scraping", "phase": "bookmarks"})
+        eq.put(("progress", {"status": "scraping", "phase": "bookmarks"}))
         book_ids = [b.book_id for b in books] if books else []
         all_bookmarks = []
         new_synckeys = {}
         for book_id in book_ids[:50]:
             last_synckey = bookmark_synckeys.get(book_id, 0)
-            bms, new_sk = await loop.run_in_executor(
-                None, lambda bid=book_id, sk=last_synckey: scrape_bookmarks(client._page, bid, sk)
-            )
+            bms, new_sk = scrape_bookmarks(client._page, book_id, last_synckey)
             if bms:
                 all_bookmarks.extend(bms)
             if new_sk != last_synckey:
                 new_synckeys[book_id] = new_sk
 
         if all_bookmarks:
-            yield sse_event("data", {"type": "bookmark", "items": [b.model_dump() for b in all_bookmarks]})
+            eq.put(("data", {"type": "bookmark", "items": [b.model_dump() for b in all_bookmarks]}))
         if new_synckeys:
-            yield sse_event("data", {"type": "synckeys", "synckeys": new_synckeys})
+            eq.put(("data", {"type": "synckeys", "synckeys": new_synckeys}))
         counts["bookmarks"] = len(all_bookmarks)
 
-        yield sse_event("done", {"counts": counts})
+        eq.put(("done", {"counts": counts}))
     except Exception as e:
-        log.exception("[sync/weread] Error")
-        yield sse_event("error", {"error": str(e)})
+        log.exception("[sync/weread] Error in subprocess")
+        eq.put(("error", {"error": str(e)}))
     finally:
-        await loop.run_in_executor(None, lambda: client.__exit__(None, None, None))
+        if client:
+            try:
+                client.__exit__(None, None, None)
+            except Exception:
+                pass
 
 
-async def _refresh_weread(session_state_json: str):
+def _refresh_weread_subprocess(eq: mp.Queue, session_state_json: str):
     from community.weread.client import WeReadClient
 
-    loop = asyncio.get_event_loop()
-
-    def _do():
+    client = None
+    try:
         client = WeReadClient(headless=True, state_json=session_state_json)
         client.__enter__()
         client.ensure_ready()
         profile = client.scrape_profile()
         vid = client.vid
-        client.__exit__(None, None, None)
-        return vid, profile
+        eq.put(("result", {
+            "community_user_id": vid,
+            "profile_json": profile.model_dump_json(),
+        }))
+    except Exception as e:
+        eq.put(("error", {"error": str(e)}))
+    finally:
+        if client:
+            try:
+                client.__exit__(None, None, None)
+            except Exception:
+                pass
 
-    vid, profile = await loop.run_in_executor(None, _do)
-    return {
-        "community_user_id": vid,
-        "profile_json": profile.model_dump_json(),
-    }
+
+# ---- Flomo subprocess functions (module-level for macOS spawn) ----
 
 
-# ---- Flomo ----
-
-
-async def _bind_flomo(user_id: int, channel: str):
+def _bind_flomo_subprocess(eq: mp.Queue, user_id: int, channel: str):
     from community.flomo.client import FlomoClient
+    from community.flomo.session import extract_profile_from_state
 
-    task_id = uuid.uuid4().hex[:12]
-    yield sse_event("progress", {"task_id": task_id, "status": "pending"})
+    saved_state = None
 
-    eq = queue.Queue()
-    saved_state = [None]
+    def capture_qr(data_bytes):
+        eq.put(("progress", {
+            "status": "pending",
+            "qr_base64": f"data:image/png;base64,{base64.b64encode(data_bytes).decode()}",
+        }))
 
-    def _run():
-        def capture_qr(data_bytes):
-            eq.put(("qr", base64.b64encode(data_bytes).decode()))
+    def capture_progress(status):
+        eq.put(("progress", {"status": status}))
 
-        def capture_progress(status):
-            eq.put(("status", status))
+    def on_save_state(s):
+        nonlocal saved_state
+        saved_state = s
 
-        client = FlomoClient(
-            headless=False,
-            channel=channel,
-            on_qr=capture_qr,
-            on_progress=capture_progress,
-            on_save_state=lambda s: saved_state.__setitem__(0, s),
-        )
-        client.__enter__()
+    client = FlomoClient(
+        headless=False,
+        channel=channel,
+        on_qr=capture_qr,
+        on_progress=capture_progress,
+        on_save_state=on_save_state,
+    )
+    client.__enter__()
+    try:
+        client.ensure_ready()
+    except Exception as e:
+        eq.put(("error", {"error": str(e)}))
         try:
-            client.ensure_ready()
-        except Exception as e:
-            eq.put(("error", str(e)))
-            return
-        eq.put(("done", client))
-
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _run)
-
-    client = None
-    while client is None:
-        try:
-            tag, data = eq.get_nowait()
-        except queue.Empty:
-            await asyncio.sleep(0.3)
-            continue
-        if tag == "qr":
-            yield sse_event("progress", {"task_id": task_id, "status": "pending", "qr_base64": f"data:image/png;base64,{data}"})
-        elif tag == "status":
-            yield sse_event("progress", {"task_id": task_id, "status": data})
-        elif tag == "error":
-            yield sse_event("error", {"error": data})
-            return
-        elif tag == "done":
-            client = data
+            client.__exit__(None, None, None)
+        except Exception:
+            pass
+        return
 
     try:
-        yield sse_event("progress", {"task_id": task_id, "status": "logged_in"})
-        yield sse_event("progress", {"task_id": task_id, "status": "fetching_profile"})
+        eq.put(("progress", {"status": "logged_in"}))
+        eq.put(("progress", {"status": "fetching_profile"}))
 
         user_id_str = _extract_flomo_user_id(client.session) or uuid.uuid4().hex[:8]
-        state_json = saved_state[0] or client.session._state_json
+        state_json = saved_state or client.session._state_json
 
-        from community.flomo.session import extract_profile_from_state
         profile = extract_profile_from_state(state_json)
         if profile is None:
             profile = {"user_id": user_id_str, "name": "flomo"}
@@ -592,120 +592,100 @@ async def _bind_flomo(user_id: int, channel: str):
 
         expires_at = _extract_flomo_expires(state_json)
 
-        yield sse_event("bound", {
+        eq.put(("bound", {
             "community_user_id": user_id_str,
             "profile_json": json.dumps(profile, ensure_ascii=False),
             "session_state_json": state_json or "",
             "session_expires_at": expires_at,
-        })
+        }))
 
-        # Auto-scrape memos -- download zip, let Go backend parse it
-        yield sse_event("scraping", {"phase": "memos", "counts": {}})
+        # Auto-scrape memos -- download zip, Go backend parses it
+        eq.put(("scraping", {"phase": "memos", "counts": {}}))
 
-        export_eq = queue.Queue()
+        def on_export_progress(status):
+            eq.put(("scraping", {"phase": status, "counts": {}}))
 
-        def _export():
-            def on_export_progress(status):
-                export_eq.put(("status", status))
+        client._on_progress = on_export_progress
+        zip_path = client.download_export()
 
-            client._on_progress = on_export_progress
-            try:
-                zip_path = client.download_export()
-                export_eq.put(("done", zip_path))
-            except Exception as e:
-                export_eq.put(("error", str(e)))
-
-        loop.run_in_executor(None, _export)
-
-        zip_path = None
-        while zip_path is None:
-            try:
-                tag, data = export_eq.get_nowait()
-            except queue.Empty:
-                await asyncio.sleep(0.3)
-                continue
-            if tag == "status":
-                yield sse_event("scraping", {"phase": data, "counts": {}})
-            elif tag == "error":
-                yield sse_event("error", {"error": data})
-                return
-            elif tag == "done":
-                zip_path = data
-
-        await loop.run_in_executor(None, lambda: client.__exit__(None, None, None))
-        yield sse_event("done", {"zip_path": str(zip_path)})
-
+        eq.put(("done", {"zip_path": str(zip_path)}))
     except Exception as e:
-        log.exception("[bind/flomo] Error")
-        yield sse_event("error", {"error": str(e)})
+        log.exception("[bind/flomo] Error in subprocess")
+        eq.put(("error", {"error": str(e)}))
+    finally:
+        try:
+            client.__exit__(None, None, None)
+        except Exception:
+            pass
 
 
-async def _sync_flomo(user_id, session_state_json, community_user_id):
+def _sync_flomo_subprocess(eq: mp.Queue, user_id, session_state_json, community_user_id):
     from community.flomo.client import FlomoClient
 
     if not session_state_json:
-        yield sse_event("error", {"error": "No session state"})
+        eq.put(("error", {"error": "No session state"}))
         return
 
-    loop = asyncio.get_event_loop()
-
-    def _open():
+    client = None
+    try:
         client = FlomoClient(headless=False, state_json=session_state_json)
         client.__enter__()
         client.ensure_ready()
-        return client
 
-    client = await loop.run_in_executor(None, _open)
+        eq.put(("progress", {"status": "scraping", "phase": "memos"}))
+        zip_path = client.download_export()
 
-    try:
-        yield sse_event("progress", {"status": "scraping", "phase": "memos"})
-        zip_path = await loop.run_in_executor(None, client.download_export)
-        yield sse_event("done", {"zip_path": str(zip_path)})
+        eq.put(("done", {"zip_path": str(zip_path)}))
     except Exception as e:
-        log.exception("[sync/flomo] Error")
-        yield sse_event("error", {"error": str(e)})
+        log.exception("[sync/flomo] Error in subprocess")
+        eq.put(("error", {"error": str(e)}))
     finally:
-        await loop.run_in_executor(None, lambda: client.__exit__(None, None, None))
+        if client:
+            try:
+                client.__exit__(None, None, None)
+            except Exception:
+                pass
 
 
-async def _refresh_flomo(session_state_json: str):
+def _refresh_flomo_subprocess(eq: mp.Queue, session_state_json: str):
     from community.flomo.client import FlomoClient
+    from community.flomo.session import extract_profile_from_state
 
-    loop = asyncio.get_event_loop()
-
-    def _do():
+    client = None
+    try:
         client = FlomoClient(headless=True, state_json=session_state_json)
         client.__enter__()
         client.ensure_ready()
         user_id_str = _extract_flomo_user_id(client.session) or "unknown"
         state_json_val = client.session._state_json
-        client.__exit__(None, None, None)
-        return user_id_str, state_json_val
+        profile = extract_profile_from_state(state_json_val)
+        if profile is None:
+            profile = {"user_id": user_id_str, "name": "flomo"}
+        else:
+            profile.setdefault("user_id", user_id_str)
+        eq.put(("result", {
+            "community_user_id": user_id_str,
+            "profile_json": json.dumps(profile, ensure_ascii=False),
+        }))
+    except Exception as e:
+        eq.put(("error", {"error": str(e)}))
+    finally:
+        if client:
+            try:
+                client.__exit__(None, None, None)
+            except Exception:
+                pass
 
-    user_id_str, state_json_val = await loop.run_in_executor(None, _do)
-    from community.flomo.session import extract_profile_from_state
-    profile = extract_profile_from_state(state_json_val)
-    if profile is None:
-        profile = {"user_id": user_id_str, "name": "flomo"}
-    else:
-        profile.setdefault("user_id", user_id_str)
-    return {
-        "community_user_id": user_id_str,
-        "profile_json": json.dumps(profile, ensure_ascii=False),
-    }
 
-
-# ---- Helpers ----
-
-
-def _logout_flomo(session_state_json: str):
+def _logout_flomo_subprocess(session_state_json: str):
     """Open browser and click logout on flomo."""
     from community.flomo.client import FlomoClient
     from community.flomo import BASE_URL
 
-    client = FlomoClient(headless=True, state_json=session_state_json)
-    client.__enter__()
+    client = None
     try:
+        client = FlomoClient(headless=True, state_json=session_state_json)
+        client.__enter__()
         client._start_browser()
         page = client._page
         page.goto(BASE_URL)
@@ -722,7 +702,119 @@ def _logout_flomo(session_state_json: str):
     except Exception as e:
         log.warning("[unbind/flomo] Logout failed: %s", e)
     finally:
-        client.__exit__(None, None, None)
+        if client:
+            try:
+                client.__exit__(None, None, None)
+            except Exception:
+                pass
+
+
+# ---- Douban async generators ----
+
+
+async def _bind_douban(user_id: int, channel: str):
+    task_id = uuid.uuid4().hex[:12]
+    yield sse_event("progress", {"task_id": task_id, "status": "pending"})
+
+    eq = mp.Queue()
+    p = mp.Process(target=_bind_douban_subprocess, args=(eq, user_id, channel))
+    p.start()
+
+    async for event in _drain_process_events(eq, p, task_id):
+        yield event
+
+
+async def _sync_douban(user_id, session_state_json, community_user_id, existing_book_urls, existing_movie_urls):
+    if not session_state_json:
+        yield sse_event("error", {"error": "No session state"})
+        return
+
+    eq = mp.Queue()
+    p = mp.Process(
+        target=_sync_douban_subprocess,
+        args=(eq, user_id, session_state_json, community_user_id, existing_book_urls, existing_movie_urls),
+    )
+    p.start()
+
+    async for event in _drain_process_events(eq, p):
+        yield event
+
+
+async def _refresh_douban(session_state_json: str):
+    return await _run_subprocess_single(_refresh_douban_subprocess, (session_state_json,))
+
+
+# ---- WeRead async generators ----
+
+
+async def _bind_weread(user_id: int, channel: str):
+    task_id = uuid.uuid4().hex[:12]
+    yield sse_event("progress", {"task_id": task_id, "status": "pending"})
+
+    eq = mp.Queue()
+    p = mp.Process(target=_bind_weread_subprocess, args=(eq, user_id, channel))
+    p.start()
+
+    async for event in _drain_process_events(eq, p, task_id):
+        yield event
+
+
+async def _sync_weread(user_id, session_state_json, community_user_id, bookmark_synckeys):
+    if not session_state_json:
+        yield sse_event("error", {"error": "No session state"})
+        return
+
+    eq = mp.Queue()
+    p = mp.Process(
+        target=_sync_weread_subprocess,
+        args=(eq, user_id, session_state_json, community_user_id, bookmark_synckeys),
+    )
+    p.start()
+
+    async for event in _drain_process_events(eq, p):
+        yield event
+
+
+async def _refresh_weread(session_state_json: str):
+    return await _run_subprocess_single(_refresh_weread_subprocess, (session_state_json,))
+
+
+# ---- Flomo async generators ----
+
+
+async def _bind_flomo(user_id: int, channel: str):
+    task_id = uuid.uuid4().hex[:12]
+    yield sse_event("progress", {"task_id": task_id, "status": "pending"})
+
+    eq = mp.Queue()
+    p = mp.Process(target=_bind_flomo_subprocess, args=(eq, user_id, channel))
+    p.start()
+
+    async for event in _drain_process_events(eq, p, task_id):
+        yield event
+
+
+async def _sync_flomo(user_id, session_state_json, community_user_id):
+    if not session_state_json:
+        yield sse_event("error", {"error": "No session state"})
+        return
+
+    eq = mp.Queue()
+    p = mp.Process(
+        target=_sync_flomo_subprocess,
+        args=(eq, user_id, session_state_json, community_user_id),
+    )
+    p.start()
+
+    async for event in _drain_process_events(eq, p):
+        yield event
+
+
+async def _refresh_flomo(session_state_json: str):
+    return await _run_subprocess_single(_refresh_flomo_subprocess, (session_state_json,))
+
+
+# ---- Helpers ----
 
 
 def _extract_dbcl2_expiry(state_json: str) -> str | None:

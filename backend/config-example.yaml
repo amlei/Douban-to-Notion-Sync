@@ -33,3 +33,8 @@ postgres:
 
 # Python scraper service URL
 scraper_url: "http://127.0.0.1:50051"
+
+llm:
+  api_key: ""
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  model: "qwen-plus"

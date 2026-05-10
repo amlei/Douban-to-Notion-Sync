@@ -1,4 +1,4 @@
-package community
+package platform
 
 import (
 	"crypto/md5"

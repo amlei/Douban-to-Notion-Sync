@@ -14,8 +14,9 @@ LifeInk AI -- a personal data aggregator that scrapes book/movie/memo data from 
 cd backend
 go run main.go                     # Start Go API server (port 8000)
 go build -o lifeink-api .          # Build binary
-go test ./... -v                   # Run tests
 ```
+
+No test files exist yet (`*_test.go`).
 
 ### Python Scraper Service (Playwright)
 
@@ -65,7 +66,7 @@ No test suite or linter for the root project.
 
 ### Backend (`backend/`)
 
-Go (Gin) API server + Python (FastAPI) scraper microservice.
+Go 1.26 (Gin) API server + Python (FastAPI) scraper microservice.
 
 ```
 Frontend (React)  <-->  Go API Server (Gin, :8000)  <-->  PostgreSQL
@@ -122,17 +123,15 @@ Bun-managed Next.js 16 App Router + React 19 + TypeScript + Tailwind CSS v4.
 
 - **App Router structure** (`src/app/`):
   - `layout.tsx` -- root layout with `ThemeProvider` (next-themes)
-  - `page.tsx` -- redirects to `/workspace`
+  - `page.tsx` -- public landing page (marketing/features hero, no auth required)
   - `api/` -- Route Handlers (BFF layer): `auth/route.ts`, `chat/route.ts`, `community/{bind,sync,data}/route.ts`. Each forwards requests to Go backend with cookie passthrough; `auth` handler sets/clears httpOnly `access_token` cookie.
   - `(auth)/layout.tsx` -- auth guard: redirects authenticated users to `/workspace`
   - `(auth)/login/page.tsx` -- login/registration page (email verification code flow)
   - `workspace/layout.tsx` -- workspace guard: redirects unauthenticated users to `/login`
+  - `workspace/page.tsx` -- redirects to `/workspace/chat/new`
   - `workspace/workspace-content.tsx` -- `QueryClientProvider` + `SidebarProvider` + sidebar + main content
   - `workspace/chat/new/page.tsx` -- welcome screen with chat input
   - `workspace/chat/[id]/page.tsx` -- chat page with `@ai-sdk/react` streaming
-  - `workspace/settings/page.tsx` -- settings tabs (general, account, data, terms)
-  - `workspace/settings/sync/page.tsx` -- platform binding/sync page
-  - `workspace/settings/data/page.tsx` -- data viewer (books/movies/notes/memos)
 - **Core business logic** (`src/core/`):
   - `api/client.ts` -- fetch wrapper with `credentials: "include"` for cookie-based auth
   - `api/auth.ts` -- auth API functions (register/verify/login/logout/profile)
@@ -144,13 +143,18 @@ Bun-managed Next.js 16 App Router + React 19 + TypeScript + Tailwind CSS v4.
   - `community/queries.ts` -- TanStack Query hooks for community data and bindings
   - `community/use-platform-binding.ts` -- platform binding state machine with WebSocket
   - `chat/use-chat-store.ts` -- in-memory chat state (Map cache)
+  - `uploads/` -- file validation and prompt-input file handling
   - `utils/password.ts` -- password strength checking
 - **UI components** (`src/components/`):
   - `ui/` -- 30+ Radix UI + CVA components (button, input, dialog, tabs, sidebar, etc.)
-  - `workspace/` -- feature components (sidebar, chat, settings panels, data views)
+  - `ai-elements/` -- 27 specialized AI chat UI components (prompt-input, message, chain-of-thought, code-block, canvas, artifact, etc.)
+  - `workspace/` -- feature components (sidebar, chat, data views)
+  - `workspace/settings/` -- dialog-based settings (settings-dialog.tsx wraps general-settings, account-manage, sync-manage, data-manage, service-agreement as tabs within a single dialog)
   - `theme-provider.tsx` -- next-themes wrapper
   - `query-client-provider.tsx` -- TanStack Query provider
 - **Styling**: Tailwind CSS v4 with oklch color system, `class`-based dark mode via next-themes
+- **Path alias**: `@/*` maps to `./src/*` (configured in `tsconfig.json`)
+- **Env validation**: `src/env.js` uses `@t3-oss/env-nextjs` + Zod to validate `INTERNAL_BACKEND_URL`
 - **Auth**: Cookie-based (httpOnly `access_token`), server-side auth guards in layouts
 - **API routing**: REST calls go through Next.js Route Handlers (`src/app/api/auth/route.ts`, `src/app/api/chat/route.ts`, `src/app/api/community/{bind,sync,data}/route.ts`) that forward to Go backend, managing httpOnly cookies server-side. WebSocket is the only direct proxy via `next.config.js` rewrites.
 - UI is in Chinese
@@ -174,6 +178,7 @@ Bun-managed Next.js 16 App Router + React 19 + TypeScript + Tailwind CSS v4.
 - All files created for temporary use shall be placed in the `tmp/` directory.
 - Creating .sh and other script files is prohibited.
 - Frontend modal components must not use horizontal divider lines (e.g. `border-top`, `border-bottom`, `<hr>`) for visual separation. Use spacing, background color, or other non-line styling instead.
+- Frontend component reuse: when building new features, first check `frontend/src/components/ui` for existing reusable components. If none exists, evaluate whether the feature is worth building as a reusable component -- the criteria is whether it will be used in multiple places and the project/user has a consistent style preference (e.g. `button.tsx` was worth building because buttons are used everywhere with a unified style). If reusable, name the component after its functionality.
 
 ## API Design Convention
 
@@ -195,7 +200,7 @@ All API endpoints use a **unified single-endpoint pattern**: one URL per domain,
 - `BOOK_ICON`, `VIDEO_ICON` -- icon URLs for Notion pages
 - `STAR` -- character used to display ratings
 
-`backend/config.yaml` (gitignored, for auth + Redis + PostgreSQL):
+`backend/config.yaml` (gitignored, for auth + Redis + PostgreSQL; copy from `config-example.yaml`):
 
 - `smtp.provider` -- preset name (`qq`, `outlook`, `163`, `126`, `yeah`, `custom`)
 - `smtp.username`, `smtp.password` -- SMTP credentials
@@ -206,5 +211,5 @@ All API endpoints use a **unified single-endpoint pattern**: one URL per domain,
 
 ## CI/CD
 
-- `.github/workflows/pages.yml` -- deploys a GitHub Pages site
+- `.github/workflows/pages.yml` -- deploys a GitHub Pages site from `docs/` directory
 - `.github/workflows/auto-merge.yml` -- auto-merge with squash for repository owner PRs, after Python syntax checks on both root and backend modules

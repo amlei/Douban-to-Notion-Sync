@@ -2,32 +2,44 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
-import { TextStreamChatTransport } from "ai";
-import { Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useSearchParams } from "next/navigation";
+import { Streamdown } from "streamdown";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
 import {
   Message,
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
+import {
+  Reasoning,
+  ReasoningTrigger,
+  ReasoningContent,
+} from "@/components/ai-elements/reasoning";
+import {
+  PromptInput,
+  PromptInputTextarea,
+  PromptInputSubmit,
+} from "@/components/ai-elements/prompt-input";
+import { streamdownPlugins, humanMessagePlugins } from "@/core/streamdown/plugins";
 import { useChatStore } from "@/core/chat/use-chat-store";
-
-const transport = new TextStreamChatTransport({
-  api: "/api/chat",
-});
 
 export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {
   const [chatId, setChatId] = useState<string>("");
   const store = useChatStore();
-  const [input, setInput] = useState("");
+  const searchParams = useSearchParams();
+  const initialSentRef = useRef(false);
 
   useEffect(() => {
     params.then((p) => setChatId(p.id));
   }, [params]);
 
-  const { messages, sendMessage, status, setMessages } = useChat({
+  const { messages, sendMessage, status, setMessages, stop } = useChat({
     id: chatId,
-    transport,
+    api: "/api/chat",
     onFinish: ({ message }) => {
       store.saveMessages(chatId, [...messages, message]);
       const title = messages[0]?.parts
@@ -38,6 +50,15 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
       if (title) store.updateTitle(chatId, title);
     },
   });
+
+  // Auto-send the initial message passed from /chat/new via ?q= param
+  useEffect(() => {
+    if (!chatId || initialSentRef.current || status !== "ready") return;
+    const q = searchParams.get("q");
+    if (!q) return;
+    initialSentRef.current = true;
+    sendMessage({ text: q });
+  }, [chatId, status, searchParams, sendMessage]);
 
   const prevChatIdRef = useRef(chatId);
   useEffect(() => {
@@ -50,65 +71,67 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     }
   }, [chatId, messages, setMessages, store]);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const handleSubmit = () => {
-    if (!input.trim() || status !== "ready") return;
-    sendMessage({ text: input });
-    setInput("");
-  };
-
   if (!chatId) return null;
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg) => (
-          <Message key={msg.id} from={msg.role}>
-            <MessageContent>
-              {msg.parts.map((part, i) => {
-                if (part.type === "text") {
-                  return <MessageResponse key={i}>{part.text}</MessageResponse>;
-                }
-                return null;
-              })}
-            </MessageContent>
-          </Message>
-        ))}
-        {(status === "submitted" || status === "streaming") && (
-          <div className="flex justify-center">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
+      <Conversation>
+        <ConversationContent className="max-w-3xl mx-auto w-full">
+          {messages.map((msg) => (
+            <Message key={msg.id} from={msg.role}>
+              <MessageContent>
+                {msg.parts.map((part, i) => {
+                  if (part.type === "reasoning") {
+                    return (
+                      <Reasoning
+                        key={i}
+                        isStreaming={part.state === "streaming"}
+                      >
+                        <ReasoningTrigger />
+                        <ReasoningContent>{part.text}</ReasoningContent>
+                      </Reasoning>
+                    );
+                  }
+                  if (part.type !== "text") return null;
+                  if (msg.role === "user") {
+                    return (
+                      <Streamdown key={i} {...humanMessagePlugins}>
+                        {part.text}
+                      </Streamdown>
+                    );
+                  }
+                  return (
+                    <MessageResponse key={i} {...streamdownPlugins}>
+                      {part.text}
+                    </MessageResponse>
+                  );
+                })}
+              </MessageContent>
+            </Message>
+          ))}
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
       <div className="p-4">
-        <div className="relative max-w-2xl mx-auto">
-          <textarea
-            rows={3}
-            className="w-full resize-none rounded-xl border border-input bg-background px-4 py-3 pr-12 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            placeholder="继续对话..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit();
-              }
+        <div className="max-w-3xl mx-auto">
+          <PromptInput
+            onSubmit={({ text }) => {
+              if (!text.trim() || status !== "ready") return;
+              sendMessage({ text });
             }}
-            disabled={status !== "ready"}
-          />
-          <Button
-            size="icon"
-            className="absolute right-2 bottom-2 h-8 w-8"
-            onClick={handleSubmit}
-            disabled={status !== "ready"}
+            className="rounded-xl border border-input bg-background"
           >
-            <Send size={16} />
-          </Button>
+            <PromptInputTextarea placeholder="继续对话..." />
+            <PromptInputSubmit
+              status={status}
+              onClick={(e) => {
+                if (status === "streaming" || status === "submitted") {
+                  e.preventDefault();
+                  stop();
+                }
+              }}
+            />
+          </PromptInput>
         </div>
       </div>
     </div>

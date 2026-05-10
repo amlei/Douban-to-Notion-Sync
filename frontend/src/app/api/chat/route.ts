@@ -15,10 +15,12 @@ export async function POST(req: NextRequest) {
     body,
   });
 
-  // Stream response back
-  const contentType = backendRes.headers.get("content-type") || "text/plain";
+  // Forward SSE stream back
   return new NextResponse(backendRes.body, {
     status: backendRes.status,
-    headers: { "Content-Type": contentType },
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+    },
   });
 }

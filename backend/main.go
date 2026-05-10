@@ -6,13 +6,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/lifeink-ai/backend/community/openai"
 	"github.com/lifeink-ai/backend/internal/config"
 	"github.com/lifeink-ai/backend/internal/database"
 	"github.com/lifeink-ai/backend/internal/middleware"
+	"github.com/lifeink-ai/backend/internal/task"
+	"github.com/lifeink-ai/backend/internal/ws"
 	"github.com/lifeink-ai/backend/pkg/auth"
-	"github.com/lifeink-ai/backend/pkg/chat"
-	"github.com/lifeink-ai/backend/pkg/community"
-	"github.com/lifeink-ai/backend/pkg/scraper"
+	"github.com/lifeink-ai/backend/pkg/community/platform"
+	"github.com/lifeink-ai/backend/pkg/query"
 )
 
 func main() {
@@ -40,18 +42,23 @@ func main() {
 	defer database.CloseRedis()
 	log.Println("[main] Redis connected")
 
-	// Create task manager and scraper client
-	taskMgr := community.NewTaskManager()
-	scraperClient := scraper.NewClient()
+	// Create task manager
+	taskMgr := task.NewManager[platform.BindData]()
 
 	// Create services
-	communitySvc := community.NewCommunityService(database.DB, taskMgr, scraperClient)
+	communitySvc := platform.NewCommunityService(database.DB, taskMgr)
 
 	// Create handlers
 	authHandler := auth.NewAuthHandler(database.DB)
-	communityHandler := community.NewCommunityHandler(communitySvc)
-	wsHandler := community.NewWebSocketHandler(taskMgr, database.DB)
-	chatHandler := chat.NewChatHandler()
+	communityHandler := platform.NewCommunityHandler(communitySvc)
+	wsAuth := ws.NewAuthenticator(database.DB)
+	wsHandler := platform.NewWebSocketHandler(wsAuth, taskMgr)
+
+	// Load LLM config and create client
+	var llmCfg openai.LLMConfig
+	config.Unmarshal("llm", &llmCfg)
+	llmClient := openai.NewClient(llmCfg)
+	queryHandler := query.NewQueryHandler(llmClient)
 
 	// Setup Gin
 	r := gin.Default()
@@ -64,7 +71,7 @@ func main() {
 	authHandler.RegisterRoutes(r)
 	communityHandler.RegisterRoutes(r)
 	wsHandler.RegisterRoutes(r)
-	chatHandler.RegisterRoutes(r)
+	queryHandler.RegisterRoutes(r)
 
 	// Start server
 	addr := ":8000"

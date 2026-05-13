@@ -6,9 +6,11 @@ import {
   PromptInputTextarea,
   PromptInputSubmit,
 } from "@/components/ai-elements/prompt-input";
+import { useRequireAuth } from "@/core/auth/auth-guard";
 
 export default function NewChatPage() {
   const router = useRouter();
+  const requireAuth = useRequireAuth();
 
   return (
     <div className="flex-1 flex items-center justify-center p-4">
@@ -17,7 +19,9 @@ export default function NewChatPage() {
         <PromptInput
           onSubmit={({ text }) => {
             if (!text.trim()) return;
-            router.replace(`/workspace/chat/0?q=${encodeURIComponent(text)}`);
+            requireAuth(() => {
+              router.replace(`/workspace/chat/0?q=${encodeURIComponent(text)}`);
+            });
           }}
           className="rounded-xl border border-input bg-background"
         >

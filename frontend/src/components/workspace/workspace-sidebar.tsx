@@ -52,11 +52,13 @@ import { toast } from "sonner";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { useChatStore } from "@/core/chat/use-chat-store";
 import { useSettingsDialog } from "@/components/workspace/use-settings-dialog";
+import { useRequireAuth } from "@/core/auth/auth-guard";
 
 export function WorkspaceSidebar() {
   const { user, logout } = useAuth();
   const store = useChatStore();
   const { setSettingsOpen } = useSettingsDialog();
+  const requireAuth = useRequireAuth();
   const router = useRouter();
   const { state: sidebarState } = useSidebar();
 
@@ -94,9 +96,11 @@ export function WorkspaceSidebar() {
   }, [isCollapsed, manageMode]);
 
   const startRename = useCallback((chatId: string, currentTitle: string) => {
-    setEditingId(chatId);
-    setEditTitle(currentTitle);
-  }, []);
+    requireAuth(() => {
+      setEditingId(chatId);
+      setEditTitle(currentTitle);
+    });
+  }, [requireAuth]);
 
   const commitRename = useCallback(async () => {
     if (!editingId) return;
@@ -115,13 +119,13 @@ export function WorkspaceSidebar() {
   }, []);
 
   const startSingleDelete = useCallback((chatId: string) => {
-    setDeleteTarget({ type: "single", ids: [chatId] });
-  }, []);
+    requireAuth(() => setDeleteTarget({ type: "single", ids: [chatId] }));
+  }, [requireAuth]);
 
   const startBatchDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
-    setDeleteTarget({ type: "batch", ids: Array.from(selectedIds) });
-  }, [selectedIds]);
+    requireAuth(() => setDeleteTarget({ type: "batch", ids: Array.from(selectedIds) }));
+  }, [selectedIds, requireAuth]);
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
@@ -233,11 +237,9 @@ export function WorkspaceSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild>
-                  <Link href="/workspace/data">
-                    <Database size={16} />
-                    <span>数据管理</span>
-                  </Link>
+                <SidebarMenuButton onClick={() => requireAuth(() => router.push("/workspace/data"))}>
+                  <Database size={16} />
+                  <span>数据管理</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -258,7 +260,7 @@ export function WorkspaceSidebar() {
                     </SidebarMenuButton>
                     <SidebarMenuAction
                       showOnHover
-                      onClick={() => setManageMode(true)}
+                      onClick={() => requireAuth(() => setManageMode(true))}
                       title="管理对话"
                     >
                       <CheckSquare size={14} />

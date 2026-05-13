@@ -5,17 +5,20 @@ import { WorkspaceSidebar } from "@/components/workspace/workspace-sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { SettingsDialogProvider, useSettingsDialog } from "@/components/workspace/use-settings-dialog";
 import { SettingsDialog } from "@/components/workspace/settings/settings-dialog";
+import { AuthGuardProvider } from "@/core/auth/auth-guard";
 
 export function WorkspaceContent({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider>
-      <SidebarProvider>
-        <SettingsDialogProvider>
-          <WorkspaceSidebar />
-          <SidebarInset>{children}</SidebarInset>
-          <SettingsDialogConsumer />
-        </SettingsDialogProvider>
-      </SidebarProvider>
+      <AuthGuardProvider>
+        <SidebarProvider>
+          <SettingsDialogProvider>
+            <WorkspaceSidebar />
+            <SidebarInset>{children}</SidebarInset>
+            <SettingsDialogConsumer />
+          </SettingsDialogProvider>
+        </SidebarProvider>
+      </AuthGuardProvider>
     </QueryClientProvider>
   );
 }

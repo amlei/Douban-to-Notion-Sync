@@ -27,11 +27,13 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { streamdownPlugins, humanMessagePlugins } from "@/core/streamdown/plugins";
 import { useChatStore } from "@/core/chat/use-chat-store";
+import { useRequireAuth } from "@/core/auth/auth-guard";
 
 export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {
   const store = useChatStore();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const requireAuth = useRequireAuth();
   const initialSentRef = useRef(false);
   const sessionIdRef = useRef<string>("");
   const messagesLoadedRef = useRef(false);
@@ -127,9 +129,9 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
   const handleSend = useCallback(
     (text: string) => {
       if (!text.trim() || status !== "ready") return;
-      sendMessage({ text });
+      requireAuth(() => sendMessage({ text }));
     },
-    [status, sendMessage],
+    [status, sendMessage, requireAuth],
   );
 
   if (!mounted) return null;

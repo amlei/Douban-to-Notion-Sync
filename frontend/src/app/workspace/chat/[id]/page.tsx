@@ -2,32 +2,19 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
-import { useSearchParams, useRouter } from "next/navigation";
-import { Streamdown } from "streamdown";
-import {
-  Conversation,
-  ConversationContent,
-  ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
+import { TextStreamChatTransport } from "ai";
+import { Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Message,
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
-import {
-  Reasoning,
-  ReasoningTrigger,
-  ReasoningContent,
-} from "@/components/ai-elements/reasoning";
-import {
-  PromptInput,
-  PromptInputTextarea,
-  PromptInputSubmit,
-} from "@/components/ai-elements/prompt-input";
-import { streamdownPlugins, humanMessagePlugins } from "@/core/streamdown/plugins";
 import { useChatStore } from "@/core/chat/use-chat-store";
-import { useRequireAuth } from "@/core/auth/auth-guard";
+
+const transport = new TextStreamChatTransport({
+  api: "/api/chat",
+});
 
 export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {
   const store = useChatStore();
@@ -138,43 +125,26 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
   return (
     <div className="flex flex-col h-full">
-      <Conversation>
-        <ConversationContent className="max-w-3xl mx-auto w-full">
-          {messages.map((msg) => (
-            <Message key={msg.id} from={msg.role}>
-              <MessageContent>
-                {msg.parts.map((part, i) => {
-                  if (part.type === "reasoning") {
-                    return (
-                      <Reasoning
-                        key={i}
-                        isStreaming={part.state === "streaming"}
-                      >
-                        <ReasoningTrigger />
-                        <ReasoningContent>{part.text}</ReasoningContent>
-                      </Reasoning>
-                    );
-                  }
-                  if (part.type !== "text") return null;
-                  if (msg.role === "user") {
-                    return (
-                      <Streamdown key={i} {...humanMessagePlugins}>
-                        {part.text}
-                      </Streamdown>
-                    );
-                  }
-                  return (
-                    <MessageResponse key={i} {...streamdownPlugins}>
-                      {part.text}
-                    </MessageResponse>
-                  );
-                })}
-              </MessageContent>
-            </Message>
-          ))}
-        </ConversationContent>
-        <ConversationScrollButton />
-      </Conversation>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((msg) => (
+          <Message key={msg.id} from={msg.role}>
+            <MessageContent>
+              {msg.parts.map((part, i) => {
+                if (part.type === "text") {
+                  return <MessageResponse key={i}>{part.text}</MessageResponse>;
+                }
+                return null;
+              })}
+            </MessageContent>
+          </Message>
+        ))}
+        {(status === "submitted" || status === "streaming") && (
+          <div className="flex justify-center">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
       <div className="p-4">
         <div className="max-w-3xl mx-auto">
           <PromptInput

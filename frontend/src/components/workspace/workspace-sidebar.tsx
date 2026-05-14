@@ -51,7 +51,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { useAuth } from "@/core/auth/AuthProvider";
 import { useChatStore } from "@/core/chat/use-chat-store";
-import { useSettingsDialog } from "@/components/workspace/use-settings-dialog";
+import { useSettingsDialog } from "@/core/settings/settings-dialog-context";
 import { useRequireAuth } from "@/core/auth/auth-guard";
 
 export function WorkspaceSidebar() {

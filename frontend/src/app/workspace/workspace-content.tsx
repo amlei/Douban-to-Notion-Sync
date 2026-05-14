@@ -3,7 +3,7 @@
 import { QueryClientProvider } from "@/components/query-client-provider";
 import { WorkspaceSidebar } from "@/components/workspace/workspace-sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import { SettingsDialogProvider, useSettingsDialog } from "@/components/workspace/use-settings-dialog";
+import { SettingsDialogProvider, useSettingsDialog } from "@/core/settings/settings-dialog-context";
 import { SettingsDialog } from "@/components/workspace/settings/settings-dialog";
 import { AuthGuardProvider } from "@/core/auth/auth-guard";
 

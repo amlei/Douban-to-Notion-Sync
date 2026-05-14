@@ -22,9 +22,9 @@ No test files exist yet (`*_test.go`).
 
 ```bash
 cd backend/scraper
-pip install -r requirements.txt
-python -m playwright install chromium   # first time only
-uvicorn server:app --port 50051          # start scraper microservice
+uv sync                                  # install dependencies into .venv
+uv run playwright install chromium       # first time only
+uv run uvicorn server:app --port 50051   # start scraper microservice
 ```
 
 ### Frontend (Next.js App Router + Bun)
@@ -42,7 +42,7 @@ bun run start         # preview production build
 
 ```bash
 # Terminal 1: Python scraper service
-cd backend/scraper && uvicorn server:app --port 50051
+cd backend/scraper && uv run uvicorn server:app --port 50051
 
 # Terminal 2: Go API server
 cd backend && go run main.go

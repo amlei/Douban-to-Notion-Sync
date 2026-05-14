@@ -361,9 +361,9 @@ export function WorkspaceSidebar() {
                             <SidebarMenuAction showOnHover>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <button className="flex items-center justify-center">
+                                  <span className="flex items-center justify-center">
                                     <MoreHorizontal size={14} />
-                                  </button>
+                                  </span>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent side="right" align="start" className="w-36">
                                   <DropdownMenuItem onClick={() => startRename(chat.id, chat.title)}>

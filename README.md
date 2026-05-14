@@ -27,18 +27,22 @@ LifeInk AI 从豆瓣、微信读书、Flomo 等平台采集个人的阅读、影
 
 ### 数据同步
 
-- [x] 增量同步至 Notion 数据库
+- [x] 增量同步至 Notion 数据库（legacy）
 - [x] 自动登录检测（session 过期弹二维码）
 - [x] 翻页数据提取、图标/封面/评分
-- [x] 本地 SQLite 数据库存储 -> PostgreSQL 存储（Bun ORM）
+- [x] PostgreSQL 存储（Ent ORM，自动建表）
 - [x] 绑定后自动抓取数据
+- [x] WebSocket 实时推送绑定/同步进度
 
 ### AI Agent
 
 - [x] 前端聊天界面（React + Next.js）
-- [x] 流式响应（StreamingResponse + AI SDK）
+- [x] 流式响应（SSE + AI SDK）
 - [x] Go API Server (Gin) + Python Scraper 微服务架构
-- [ ] 开发 AI Agent
+- [x] AI 聊天对话（OpenAI 兼容 LLM，支持 reasoning_content）
+- [x] 聊天会话持久化（Ent ORM）
+- [x] 自动生成会话标题
+- [ ] 基于个人数据的 AI Agent
 
 ---
 
@@ -46,41 +50,44 @@ LifeInk AI 从豆瓣、微信读书、Flomo 等平台采集个人的阅读、影
 
 ```
 main.py              # Notion 同步入口（legacy）
-function/
-  glo.py             # 全局配置
-  spider.py          # 豆瓣数据爬取（requests）
-json/                # Notion 数据库模板
-icon/                # 页面图标
+function/            # Notion 同步相关（legacy）
+json/                # Notion 数据库模板（legacy）
+icon/                # 页面图标（legacy）
 
 backend/             # API 服务 + 数据抓取
   main.go           # Go API Server (Gin) 入口
-  internal/         # 基础设施（config, database, email, middleware, redis, task, ws）
+  ent/              # Ent ORM 生成代码（schema 定义在 ent/schema/）
+  internal/         # 基础设施（config, database, email, middleware, task, ws）
   pkg/              # 业务逻辑
     auth/           # JWT 认证（注册/登录/验证码/密码重置）
     community/      # 平台绑定、同步编排、数据模型 + PostgreSQL CRUD
-      douban/       # 豆瓣模型 + repo
-      weread/       # 微信读书模型 + repo
-      flomo/        # Flomo 模型 + repo + HTML/zip 导出解析
     scraper/        # Python Scraper HTTP 客户端（SSE 解析）
-    chat/           # AI 聊天处理器
-  scraper/          # Python Scraper 微服务（FastAPI）
+    chat/           # AI 聊天（会话管理、消息持久化、LLM 流式响应）
+  community/
+    openai/         # OpenAI 兼容 HTTP 客户端（Chat + ChatStream）
+  scraper/          # Python Scraper 微服务（FastAPI，uv 管理）
     server.py       # FastAPI 应用（bind/sync/refresh/unbind/health）
     community/
       douban/       # 豆瓣（Playwright 登录 + requests 抓取）
       weread/       # 微信读书（Playwright 浏览器自动化）
       flomo/        # Flomo（Playwright 浏览器自动化 + HTML 导出解析）
 
-frontend/            # Next.js App Router 前端（Bun + Turbopack）
+frontend/            # Next.js 16 App Router 前端（Bun + Turbopack）
   src/app/           # 页面路由（App Router）
     (auth)/          # 登录/注册页
     workspace/       # 主工作区（聊天、设置、数据查看）
     api/             # Route Handlers（BFF 层，转发请求至 Go 后端）
   src/core/          # 核心业务逻辑
-    api/             # API 客户端（auth.ts, community.ts）
+    api/             # API 客户端（auth, community）
     auth/            # 认证上下文与类型（AuthProvider, Zod schema）
-    community/       # 平台绑定/同步（TanStack Query, WebSocket）
     chat/            # 聊天状态管理
-  src/components/    # UI 组件（ui/ 通用组件, workspace/ 业务组件）
+    community/       # 平台绑定/同步（TanStack Query, WebSocket）
+    settings/        # 设置模块
+    streamdown/      # Markdown 流式渲染
+  src/components/    # UI 组件
+    ui/              # Shadcn UI 基础组件
+    ai-elements/     # AI 功能组件库
+    workspace/       # 页面级 UI 组件
 ```
 
 ---
@@ -92,13 +99,13 @@ frontend/            # Next.js App Router 前端（Bun + Turbopack）
 ```bash
 # 终端 1: Python Scraper 微服务
 cd backend/scraper
-pip install -r requirements.txt
-python -m playwright install chromium  # 首次
-uvicorn server:app --port 50051
+uv sync                              # uv 管理依赖
+uv run playwright install chromium   # 首次
+uv run uvicorn server:app --port 50051
 
 # 终端 2: Go API 服务器
 cd backend
-cp config-example.yaml config.yaml    # 配置 SMTP/Redis/PostgreSQL
+cp config-example.yaml config.yaml    # 配置 SMTP/Redis/PostgreSQL/LLM
 go run main.go
 
 # 终端 3: 前端
@@ -142,7 +149,9 @@ python main.py
 
 ### Phase 2 - AI Agent
 
-- [ ] AI 对话接口（基于个人数据上下文）
+- [x] AI 对话接口（LLM 流式响应）
+- [x] 聊天会话持久化
+- [ ] 基于个人数据上下文的 AI 对话
 - [ ] 阅读偏好分析与推荐
 - [ ] 标签/分类智能整理
 - [ ] 跨平台数据关联（读书笔记 vs 影评 vs 日记）

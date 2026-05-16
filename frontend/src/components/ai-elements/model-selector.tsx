@@ -40,7 +40,14 @@ export const ModelSelectorContent = ({
   title = "Model Selector",
   ...props
 }: ModelSelectorContentProps) => (
-  <DialogContent className={cn("p-0", className)} {...props}>
+  <DialogContent
+    aria-describedby={undefined}
+    className={cn(
+      "outline! border-none! p-0 outline-border! outline-solid!",
+      className
+    )}
+    {...props}
+  >
     <DialogTitle className="sr-only">{title}</DialogTitle>
     <Command className="**:data-[slot=command-input-wrapper]:h-auto">
       {children}
@@ -162,6 +169,7 @@ export type ModelSelectorLogoProps = Omit<
     | "scaleway"
     | "amazon-bedrock"
     | "cerebras"
+    // oxlint-disable-next-line typescript-eslint(ban-types) -- intentional pattern for autocomplete-friendly string union
     | (string & {});
 };
 
@@ -188,8 +196,8 @@ export const ModelSelectorLogoGroup = ({
 }: ModelSelectorLogoGroupProps) => (
   <div
     className={cn(
-      "[&>img]:bg-background dark:[&>img]:bg-foreground flex shrink-0 items-center -space-x-1 [&>img]:rounded-full [&>img]:p-px [&>img]:ring-1",
-      className,
+      "flex shrink-0 items-center -space-x-1 [&>img]:rounded-full [&>img]:bg-background [&>img]:p-px [&>img]:ring-1 dark:[&>img]:bg-foreground",
+      className
     )}
     {...props}
   />
@@ -201,8 +209,5 @@ export const ModelSelectorName = ({
   className,
   ...props
 }: ModelSelectorNameProps) => (
-  <span
-    className={cn("flex-1 truncate text-left text-xs", className)}
-    {...props}
-  />
+  <span className={cn("flex-1 truncate text-left", className)} {...props} />
 );

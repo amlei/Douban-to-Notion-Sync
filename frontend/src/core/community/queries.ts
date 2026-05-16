@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { checkAllBindings, getAllCommunityData, startBinding, unbind as unbindApi, syncData, refreshProfile } from "../api/community";
+import { checkAllBindings, getAllCommunityData, startBinding, unbind as unbindApi, syncData, refreshProfile } from "./api";
 
 export function useAllBindings() {
   return useQuery({

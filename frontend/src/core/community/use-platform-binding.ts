@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { startBinding, unbind as unbindApi, refreshProfile, syncData, connectBindWs } from "../api/community";
+import { startBinding, unbind as unbindApi, refreshProfile, syncData, connectBindWs } from "./api";
 import type { PlatformProfile, PollResult, BindStatus } from "./types";
 import { useQueryClient } from "@tanstack/react-query";
 

@@ -1,11 +1,11 @@
 import type { AuthResult, UserProfile } from "./types";
+import { backendUrl } from "@/core/api/server";
 
 export async function getServerSideUser(accessToken?: string): Promise<AuthResult> {
   if (!accessToken) return { status: "unauthenticated" };
 
   try {
-    const backendURL = process.env.INTERNAL_BACKEND_URL || "http://127.0.0.1:8000";
-    const res = await fetch(`${backendURL}/api/auth`, {
+    const res = await fetch(backendUrl("/api/auth"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

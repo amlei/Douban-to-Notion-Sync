@@ -79,3 +79,4 @@ backend/backend
 backend/scraper/__pycache__/
 
 .next
+skills-lock.json

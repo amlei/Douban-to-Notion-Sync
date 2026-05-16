@@ -5,8 +5,8 @@ import { Loader2, Mail, Lock, KeyRound, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/core/auth/AuthProvider";
-import { getPasswordStrength } from "@/core/utils/password";
-import type { StrengthLevel } from "@/core/utils/password";
+import { getPasswordStrength } from "@/core/lib/password";
+import type { StrengthLevel } from "@/core/lib/password";
 
 const STRENGTH_COLORS: Record<StrengthLevel, [string, string, string]> = {
   0: ["hsl(var(--border))", "hsl(var(--border))", "hsl(var(--border))"],

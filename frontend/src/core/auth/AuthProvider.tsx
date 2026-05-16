@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 import type { UserProfile } from "./types";
-import * as authApi from "../api/auth";
+import * as authApi from "./api";
 
 interface AuthContextType {
   user: UserProfile | null;

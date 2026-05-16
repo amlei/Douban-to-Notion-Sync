@@ -12,9 +12,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuth } from "@/core/auth/AuthProvider";
-import { updateProfile, changePassword } from "@/core/api/auth";
-import { getPasswordStrength } from "@/core/utils/password";
-import type { StrengthLevel } from "@/core/utils/password";
+import { updateProfile, changePassword } from "@/core/auth/api";
+import { getPasswordStrength } from "@/core/lib/password";
+import type { StrengthLevel } from "@/core/lib/password";
 import { useRouter } from "next/navigation";
 
 function StrengthBar({ level }: { level: StrengthLevel }) {

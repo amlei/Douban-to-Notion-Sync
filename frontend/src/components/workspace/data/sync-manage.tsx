@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Loader2, Plus } from "lucide-react";
 import { usePlatformBinding } from "@/core/community/use-platform-binding";
-import { getAllCommunityData, checkAllBindings } from "@/core/api/community";
+import { getAllCommunityData, checkAllBindings } from "@/core/community/api";
 import type { BookItem, MovieItem, NoteItem, BookmarkItem, MemoItem } from "@/core/community/types";
 import { PlatformCard } from "@/components/workspace/data/platform-card";
 import { Button } from "@/components/ui/button";

@@ -10,19 +10,26 @@ import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 
-export type WebPreviewContextValue = {
+export interface WebPreviewContextValue {
   url: string;
   setUrl: (url: string) => void;
   consoleOpen: boolean;
   setConsoleOpen: (open: boolean) => void;
-};
+}
 
 const WebPreviewContext = createContext<WebPreviewContextValue | null>(null);
 
@@ -49,24 +56,30 @@ export const WebPreview = ({
   const [url, setUrl] = useState(defaultUrl);
   const [consoleOpen, setConsoleOpen] = useState(false);
 
-  const handleUrlChange = (newUrl: string) => {
-    setUrl(newUrl);
-    onUrlChange?.(newUrl);
-  };
+  const handleUrlChange = useCallback(
+    (newUrl: string) => {
+      setUrl(newUrl);
+      onUrlChange?.(newUrl);
+    },
+    [onUrlChange]
+  );
 
-  const contextValue: WebPreviewContextValue = {
-    url,
-    setUrl: handleUrlChange,
-    consoleOpen,
-    setConsoleOpen,
-  };
+  const contextValue = useMemo<WebPreviewContextValue>(
+    () => ({
+      consoleOpen,
+      setConsoleOpen,
+      setUrl: handleUrlChange,
+      url,
+    }),
+    [consoleOpen, handleUrlChange, url]
+  );
 
   return (
     <WebPreviewContext.Provider value={contextValue}>
       <div
         className={cn(
-          "bg-card flex size-full flex-col rounded-lg border",
-          className,
+          "flex size-full flex-col rounded-lg border bg-card",
+          className
         )}
         {...props}
       >
@@ -102,23 +115,25 @@ export const WebPreviewNavigationButton = ({
   children,
   ...props
 }: WebPreviewNavigationButtonProps) => (
-  <Tooltip>
-    <TooltipTrigger asChild>
-      <Button
-        className="hover:text-foreground h-8 w-8 p-0"
-        disabled={disabled}
-        onClick={onClick}
-        size="sm"
-        variant="ghost"
-        {...props}
-      >
-        {children}
-      </Button>
-    </TooltipTrigger>
-    <TooltipContent>
-      <p>{tooltip}</p>
-    </TooltipContent>
-  </Tooltip>
+  <TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          className="h-8 w-8 p-0 hover:text-foreground"
+          disabled={disabled}
+          onClick={onClick}
+          size="sm"
+          variant="ghost"
+          {...props}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>{tooltip}</p>
+      </TooltipContent>
+    </Tooltip>
+  </TooltipProvider>
 );
 
 export type WebPreviewUrlProps = ComponentProps<typeof Input>;
@@ -130,25 +145,30 @@ export const WebPreviewUrl = ({
   ...props
 }: WebPreviewUrlProps) => {
   const { url, setUrl } = useWebPreview();
+  const [prevUrl, setPrevUrl] = useState(url);
   const [inputValue, setInputValue] = useState(url);
 
-  // Sync input value with context URL when it changes externally
-  useEffect(() => {
+  // Sync input value with context URL when it changes externally (derived state pattern)
+  if (url !== prevUrl) {
+    setPrevUrl(url);
     setInputValue(url);
-  }, [url]);
+  }
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(event.target.value);
     onChange?.(event);
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      const target = event.target as HTMLInputElement;
-      setUrl(target.value);
-    }
-    onKeyDown?.(event);
-  };
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Enter") {
+        const target = event.target as HTMLInputElement;
+        setUrl(target.value);
+      }
+      onKeyDown?.(event);
+    },
+    [setUrl, onKeyDown]
+  );
 
   return (
     <Input
@@ -178,6 +198,7 @@ export const WebPreviewBody = ({
     <div className="flex-1">
       <iframe
         className={cn("size-full", className)}
+        // oxlint-disable-next-line eslint-plugin-react(iframe-missing-sandbox)
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
         src={(src ?? url) || undefined}
         title="Preview"
@@ -189,11 +210,11 @@ export const WebPreviewBody = ({
 };
 
 export type WebPreviewConsoleProps = ComponentProps<"div"> & {
-  logs?: Array<{
+  logs?: {
     level: "log" | "warn" | "error";
     message: string;
     timestamp: Date;
-  }>;
+  }[];
 };
 
 export const WebPreviewConsole = ({
@@ -206,21 +227,21 @@ export const WebPreviewConsole = ({
 
   return (
     <Collapsible
-      className={cn("bg-muted/50 border-t font-mono text-sm", className)}
+      className={cn("border-t bg-muted/50 font-mono text-sm", className)}
       onOpenChange={setConsoleOpen}
       open={consoleOpen}
       {...props}
     >
       <CollapsibleTrigger asChild>
         <Button
-          className="hover:bg-muted/50 flex w-full items-center justify-between p-4 text-left font-medium"
+          className="flex w-full items-center justify-between p-4 text-left font-medium hover:bg-muted/50"
           variant="ghost"
         >
           Console
           <ChevronDownIcon
             className={cn(
               "h-4 w-4 transition-transform duration-200",
-              consoleOpen && "rotate-180",
+              consoleOpen && "rotate-180"
             )}
           />
         </Button>
@@ -228,22 +249,22 @@ export const WebPreviewConsole = ({
       <CollapsibleContent
         className={cn(
           "px-4 pb-4",
-          "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=open]:animate-in outline-none",
+          "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 outline-none data-[state=closed]:animate-out data-[state=open]:animate-in"
         )}
       >
         <div className="max-h-48 space-y-1 overflow-y-auto">
           {logs.length === 0 ? (
             <p className="text-muted-foreground">No console output</p>
           ) : (
-            logs.map((log, index) => (
+            logs.map((log) => (
               <div
                 className={cn(
                   "text-xs",
                   log.level === "error" && "text-destructive",
                   log.level === "warn" && "text-yellow-600",
-                  log.level === "log" && "text-foreground",
+                  log.level === "log" && "text-foreground"
                 )}
-                key={`${log.timestamp.getTime()}-${index}`}
+                key={`${log.timestamp.getTime()}-${log.level}-${log.message}`}
               >
                 <span className="text-muted-foreground">
                   {log.timestamp.toLocaleTimeString()}

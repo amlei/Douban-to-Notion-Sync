@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { UIMessage } from "ai";
 import type { ChatMeta } from "./types";
-import { listSessions, deleteSession, getMessages, renameSession, batchDeleteSessions } from "@/core/api/chat";
-import type { ChatMessage } from "@/core/api/chat";
+import { listSessions, deleteSession, getMessages, renameSession, batchDeleteSessions } from "@/core/chat/api";
+import type { ChatMessage } from "@/core/chat/api";
 
 function toUIMessages(msgs: ChatMessage[]): UIMessage[] {
   return msgs.map((m) => {

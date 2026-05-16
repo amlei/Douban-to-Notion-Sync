@@ -29,8 +29,8 @@ No test framework is configured yet.
 - `src/components/` — Cross-page reusable components only (e.g. `ui/`, `ai-elements/`, shared layout components)
 - `src/components/workspace/` — Page-specific UI components only (styling/layout, no business logic). Each component is a single file (e.g. `src/components/workspace/github-icon.tsx`, `src/components/workspace/todo-list.tsx`). If a component is complex enough to need sub-components, use a directory (e.g. `src/components/workspace/chat-message/index.tsx`).
 - `src/core/` — Business logic layer for pages (counterpart to `workspace/`). Organized by feature domain — each domain is a directory containing its own API calls, interfaces, types, hooks, and logic. `workspace/` handles UI; `core/` handles the underlying functionality.
-  - `src/core/api/` — API proxy and shared request utilities
-  - `src/core/utils/` — Shared business utilities
+  - `src/core/api/` — API proxy and shared request utilities (not for business API endpoints; implement those in each domain's own `api.ts`)
+  - `src/core/lib/` — Shared business utilities
 - `src/lib/` — Generic utilities (`utils.ts` has `cn()` helper)
 - `docs/` — Project documentation (e.g. `shadcn-ui.md`, `ui-design/`)
 

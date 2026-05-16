@@ -1,0 +1,2 @@
+backend_url: "http://127.0.0.1:8000"
+backend_ws_url: "ws://localhost:8000"

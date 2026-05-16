@@ -16,6 +16,7 @@ import {
   Trash2,
   CheckSquare,
   Square,
+  PanelLeftClose,
 } from "lucide-react";
 import {
   Sidebar,
@@ -29,6 +30,7 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarGroupContent,
+  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
@@ -218,16 +220,21 @@ export function WorkspaceSidebar() {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <Link href="/workspace/chat/new">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <MessageSquarePlus size={16} />
-                </div>
-                <div className="flex flex-col gap-0.5 leading-none">
-                  <span className="font-semibold">LifeInk AI</span>
-                </div>
-              </Link>
-            </SidebarMenuButton>
+            <div className="flex items-center w-full">
+              <SidebarMenuButton size="lg" asChild className="flex-1">
+                <Link href="/workspace/chat/new">
+                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                    <MessageSquarePlus size={16} />
+                  </div>
+                  <div className="flex flex-col gap-0.5 leading-none">
+                    <span className="font-semibold">LifeInk AI</span>
+                  </div>
+                </Link>
+              </SidebarMenuButton>
+              <SidebarTrigger>
+                <PanelLeftClose size={16} />
+              </SidebarTrigger>
+            </div>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
@@ -277,7 +284,7 @@ export function WorkspaceSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {manageMode && (
+        {!isCollapsed && manageMode && (
           <SidebarGroup>
             <SidebarGroupContent>
               <div className="flex items-center gap-1 px-2 py-1">
@@ -313,7 +320,7 @@ export function WorkspaceSidebar() {
           </SidebarGroup>
         )}
 
-        {groups.length > 0 && (
+        {!isCollapsed && groups.length > 0 && (
           <SidebarGroup>
             {groups.map((group) => (
               <div key={group.label}>

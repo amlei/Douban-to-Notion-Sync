@@ -6,8 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
+
 	"github.com/lifeink-ai/backend/ent"
 	"github.com/lifeink-ai/backend/ent/flomomemo"
+
+	platform "github.com/lifeink-ai/backend/pkg/community/pagination"
 )
 
 const PlatformFlomo = 3
@@ -71,4 +75,57 @@ func (r *FlomoRepo) GetFlomoMemos(ctx context.Context, userID int64) ([]*ent.Flo
 	return r.client.FlomoMemo.Query().
 		Where(flomomemo.UserIDEQ(userID)).
 		All(ctx)
+}
+
+// GetPaginatedMemos returns a paginated, filtered, sorted list of memos.
+func (r *FlomoRepo) GetPaginatedMemos(
+	ctx context.Context,
+	userID int64,
+	req platform.PaginationRequest,
+) (*platform.PaginatedResponse, error) {
+	query := r.client.FlomoMemo.Query().Where(flomomemo.UserIDEQ(userID))
+
+	if req.Keyword != "" {
+		query = query.Where(flomomemo.ContentContainsFold(req.Keyword))
+	}
+
+	total, err := query.Count(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	query = query.Order(memoOrderBy(req.SortBy, req.SortOrder)).
+		Limit(req.PageSize).
+		Offset((req.Page - 1) * req.PageSize)
+
+	memos, err := query.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]map[string]any, len(memos))
+	for i, m := range memos {
+		items[i] = FlomoMemoToAPIDict(m)
+	}
+
+	return &platform.PaginatedResponse{
+		Items:      items,
+		Total:      total,
+		Page:       req.Page,
+		PageSize:   req.PageSize,
+		TotalPages: (total + req.PageSize - 1) / req.PageSize,
+	}, nil
+}
+
+func memoOrderBy(sortBy, sortOrder string) flomomemo.OrderOption {
+	dir := entsql.OrderDesc()
+	if sortOrder == "asc" {
+		dir = entsql.OrderAsc()
+	}
+	switch sortBy {
+	case "memo_created_at":
+		return flomomemo.ByMemoCreatedAt(dir)
+	default:
+		return flomomemo.ByMemoCreatedAt(dir)
+	}
 }

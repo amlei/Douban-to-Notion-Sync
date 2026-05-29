@@ -222,7 +222,7 @@ export function WorkspaceSidebar() {
           <SidebarMenuItem>
             <div className="flex items-center w-full">
               <SidebarMenuButton size="lg" asChild className="flex-1">
-                <Link href="/workspace/chat/new">
+                <Link href="/">
                   <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                     <MessageSquarePlus size={16} />
                   </div>

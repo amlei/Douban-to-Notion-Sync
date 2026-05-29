@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
+
 	"github.com/lifeink-ai/backend/ent"
 	"github.com/lifeink-ai/backend/ent/game"
 	"github.com/lifeink-ai/backend/ent/movie"
 	"github.com/lifeink-ai/backend/ent/review"
+
+	platform "github.com/lifeink-ai/backend/pkg/community/pagination"
 )
 
 type DoubanRepo struct {
@@ -110,4 +114,61 @@ func (r *DoubanRepo) GetReviews(ctx context.Context, userID int64) ([]*ent.Revie
 	return r.client.Review.Query().
 		Where(review.UserIDEQ(userID)).
 		All(ctx)
+}
+
+// GetPaginatedMovies returns a paginated, filtered, sorted list of movies.
+func (r *DoubanRepo) GetPaginatedMovies(
+	ctx context.Context,
+	userID int64,
+	req platform.PaginationRequest,
+) (*platform.PaginatedResponse, error) {
+	query := r.client.Movie.Query().Where(movie.UserIDEQ(userID))
+
+	if req.Keyword != "" {
+		query = query.Where(movie.TitleContainsFold(req.Keyword))
+	}
+
+	total, err := query.Count(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	query = query.Order(movieOrderBy(req.SortBy, req.SortOrder)).
+		Limit(req.PageSize).
+		Offset((req.Page - 1) * req.PageSize)
+
+	movies, err := query.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]map[string]any, len(movies))
+	for i, m := range movies {
+		items[i] = MovieToAPIDict(m)
+	}
+
+	return &platform.PaginatedResponse{
+		Items:      items,
+		Total:      total,
+		Page:       req.Page,
+		PageSize:   req.PageSize,
+		TotalPages: (total + req.PageSize - 1) / req.PageSize,
+	}, nil
+}
+
+func movieOrderBy(sortBy, sortOrder string) movie.OrderOption {
+	dir := entsql.OrderDesc()
+	if sortOrder == "asc" {
+		dir = entsql.OrderAsc()
+	}
+	switch sortBy {
+	case "title":
+		return movie.ByTitle(dir)
+	case "rating":
+		return movie.ByRating(dir)
+	case "watch_date":
+		return movie.ByWatchDate(dir)
+	default:
+		return movie.ByScrapedAt(dir)
+	}
 }

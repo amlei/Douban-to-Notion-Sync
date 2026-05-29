@@ -7,6 +7,7 @@ import { getAllCommunityData, checkAllBindings } from "@/core/community/api";
 import type { BookItem, MovieItem, NoteItem, BookmarkItem, MemoItem } from "@/core/community/types";
 import { PlatformCard } from "@/components/workspace/data/platform-card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -111,6 +112,8 @@ export function useCommunityDataState() {
 
 export function SyncManage() {
   const [modalOpen, setModalOpen] = useState(false);
+  const [wereadApiKey, setWereadApiKey] = useState("");
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const {
     books, wereadBooks, movies, notes, wereadBookmarks, flomoMemos,
     qrSrc, bindError,
@@ -122,6 +125,14 @@ export function SyncManage() {
     weread: wereadBinding,
     flomo: flomoBinding,
   };
+
+  // Close API key dialog when binding succeeds.
+  useEffect(() => {
+    if (wereadBinding.bound && showApiKeyInput) {
+      setShowApiKeyInput(false);
+      setWereadApiKey("");
+    }
+  }, [wereadBinding.bound]);
 
   const dataCountsMap: Record<string, Record<string, number>> = {
     douban: { "本图书": books.length, "部电影": movies.length, "篇日记": notes.length },
@@ -142,7 +153,22 @@ export function SyncManage() {
 
   function handleModalSelect(platformId: string) {
     setModalOpen(false);
-    bindingMap[platformId].handleBind();
+    if (platformId === "weread") {
+      setShowApiKeyInput(true);
+    } else {
+      bindingMap[platformId].handleBind();
+    }
+  }
+
+  function handleApiKeyBind() {
+    const key = wereadApiKey.trim();
+    if (!key) return;
+    wereadBinding.handleBindWithApiKey(key);
+  }
+
+  function handleQrBind() {
+    setShowApiKeyInput(false);
+    wereadBinding.handleBind();
   }
 
   return (
@@ -189,7 +215,9 @@ export function SyncManage() {
               bp.scrapePhase === "books" ? "正在导入图书..."
               : bp.scrapePhase === "movies" ? "正在导入影视..."
               : bp.scrapePhase === "bookmarks" ? "正在导入笔记..."
+              : bp.scrapePhase === "reviews" ? "正在导入想法..."
               : bp.scrapePhase === "memos" ? "正在下载备忘录..."
+              : bp.scrapePhase === "validating" ? "正在验证 API Key..."
               : bp.bindPhase === "scanned" ? "扫码成功，等待确认..."
               : bp.bindPhase === "logged_in" ? "登录成功，正在获取资料..."
               : bp.bindPhase === "fetching_profile" ? "正在获取资料..."
@@ -220,6 +248,49 @@ export function SyncManage() {
       {bindError && (
         <p className="text-sm text-destructive">{bindError}</p>
       )}
+
+      {/* WeRead binding method chooser */}
+      <Dialog open={showApiKeyInput} onOpenChange={(open) => { if (!wereadBinding.validating) setShowApiKeyInput(open); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>绑定微信读书</DialogTitle>
+            <DialogDescription>选择绑定方式</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <p className="text-sm font-medium">API Key（推荐）</p>
+              <p className="text-xs text-muted-foreground">
+                在微信读书 Skill 获取 API Key，格式如 wrk-xxxxxxxx
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="wrk-xxxxxxxx"
+                  value={wereadApiKey}
+                  onChange={(e) => setWereadApiKey(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleApiKeyBind()}
+                  disabled={wereadBinding.validating}
+                />
+                <Button onClick={handleApiKeyBind} disabled={!wereadApiKey.trim() || wereadBinding.validating}>
+                  {wereadBinding.validating ? <Loader2 size={14} className="animate-spin" /> : "绑定"}
+                </Button>
+              </div>
+            </div>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                  或
+                </span>
+              </div>
+            </div>
+            <Button variant="outline" className="w-full" onClick={handleQrBind}>
+              扫码登录
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent>

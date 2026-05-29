@@ -18,6 +18,7 @@ import (
 	"github.com/lifeink-ai/backend/internal/config"
 	"github.com/lifeink-ai/backend/internal/database"
 	"github.com/lifeink-ai/backend/internal/task"
+	"github.com/lifeink-ai/backend/pkg/community/pagination"
 	"github.com/lifeink-ai/backend/pkg/community/platform/douban"
 	"github.com/lifeink-ai/backend/pkg/community/platform/flomo"
 	"github.com/lifeink-ai/backend/pkg/community/platform/weread"
@@ -38,6 +39,7 @@ type BindRequest struct {
 	Platform string `json:"platform"`
 	UserID   int64  `json:"user_id"`
 	Channel  string `json:"channel"`
+	APIKey   string `json:"api_key,omitempty"`
 }
 
 // SyncRequest is the request body for POST /sync.
@@ -336,15 +338,21 @@ func (s *CommunityService) StatusAll(ctx context.Context, userID int64) (map[str
 	return result, nil
 }
 
-func (s *CommunityService) StartBind(ctx context.Context, userID int64, platform, channel string) (string, error) {
+func (s *CommunityService) StartBind(ctx context.Context, userID int64, platform, channel, apiKey string) (string, error) {
 	t := s.taskMgr.Create(userID, platform, BindData{ScrapeCounts: make(map[string]int64)})
-	go s.runBind(userID, platform, channel, t)
+	go s.runBind(userID, platform, channel, apiKey, t)
 	return t.ID, nil
 }
 
-func (s *CommunityService) runBind(userID int64, platform, channel string, t *BindTask) {
+func (s *CommunityService) runBind(userID int64, platform, channel, apiKey string, t *BindTask) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
+
+	// WeRead API Key path: Go direct, skip Python scraper.
+	if platform == "weread" && apiKey != "" {
+		s.runBindWereadAPI(ctx, userID, apiKey, t)
+		return
+	}
 
 	events, err := s.scraper.CallBind(ctx, BindRequest{
 		Platform: platform,
@@ -464,6 +472,19 @@ func (s *CommunityService) StartSync(ctx context.Context, userID int64, platform
 func (s *CommunityService) runSync(userID int64, platform, communityUserID, sessionState string, t *BindTask) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
+
+	// Check if this is an API Key authenticated weread binding.
+	if platform == "weread" && isAPIKeyAuth(sessionState) {
+		log.Printf("[weread-api] runSync: routing to API Key path")
+		s.runSyncWereadAPI(ctx, userID, sessionState, t)
+		return
+	}
+
+	ssPreview := sessionState
+	if len(ssPreview) > 80 {
+		ssPreview = ssPreview[:80]
+	}
+	log.Printf("[community] runSync: platform=%s, apiKeyAuth=%v, sessionState=%s", platform, isAPIKeyAuth(sessionState), ssPreview)
 
 	existingBookURLs := []string{}
 	existingMovieURLs := []string{}
@@ -597,6 +618,32 @@ func (s *CommunityService) Refresh(ctx context.Context, userID int64, platform s
 		sessionState = *row.SessionStateJSON
 	}
 
+	// API Key path for weread: validate key and return profile.
+	if platform == "weread" && isAPIKeyAuth(sessionState) {
+		apiKey := extractAPIKey(sessionState)
+		client := weread.NewSkillAPIClient(apiKey)
+		if err := client.ValidateKey(ctx); err != nil {
+			return nil, fmt.Errorf("API Key 验证失败: %w", err)
+		}
+		shelf, err := client.FetchShelf(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("获取书架失败: %w", err)
+		}
+		communityUserID := row.CommunityUserID
+		if communityUserID == nil {
+			uid := wereadDeriveUserID(shelf)
+			communityUserID = &uid
+		}
+		profile := wereadBuildProfile(shelf)
+		s.metaRepo.SaveBinding(ctx, userID, platformID, *communityUserID, profile)
+		return map[string]any{
+			"bound":    true,
+			"platform": platform,
+			"user_id":  *communityUserID,
+			"profile":  profile,
+		}, nil
+	}
+
 	resp, err := s.scraper.CallRefresh(ctx, RefreshRequest{
 		Platform:         platform,
 		SessionStateJSON: sessionState,
@@ -699,6 +746,178 @@ func (s *CommunityService) GetCommunityData(ctx context.Context, userID int64) (
 	}, nil
 }
 
+// GetPaginatedData dispatches to the appropriate repo for paginated queries.
+func (s *CommunityService) GetPaginatedData(
+	ctx context.Context,
+	userID int64,
+	dataType string,
+	req pagination.PaginationRequest,
+	bookFilter pagination.BookFilter,
+) (*pagination.PaginatedResponse, error) {
+	switch dataType {
+	case "books":
+		return s.dataRepo.GetPaginatedBooks(ctx, userID, req, bookFilter)
+	case "movies":
+		return s.doubanRepo.GetPaginatedMovies(ctx, userID, req)
+	case "notes":
+		return s.wereadRepo.GetPaginatedNotes(ctx, userID, req)
+	case "bookmarks":
+		return s.wereadRepo.GetPaginatedBookmarks(ctx, userID, req)
+	case "memos":
+		return s.flomoRepo.GetPaginatedMemos(ctx, userID, req)
+	default:
+		return nil, fmt.Errorf("unsupported data type: %s", dataType)
+	}
+}
+
 func (s *CommunityService) GetClient() *ent.Client {
 	return database.Client
+}
+
+// ---------------------------------------------------------------------------
+// WeRead Skill API direct paths
+// ---------------------------------------------------------------------------
+
+func isAPIKeyAuth(sessionState string) bool {
+	var data struct {
+		AuthMethod string `json:"auth_method"`
+	}
+	json.Unmarshal([]byte(sessionState), &data)
+	return data.AuthMethod == "api_key"
+}
+
+func extractAPIKey(sessionState string) string {
+	var data struct {
+		APIKey string `json:"api_key"`
+	}
+	json.Unmarshal([]byte(sessionState), &data)
+	return data.APIKey
+}
+
+// wereadDeriveUserID and wereadBuildProfile are wrappers that call the
+// unexported helpers from the weread sub-package via exported functions
+// that mirror the logic. This avoids an import cycle.
+func wereadDeriveUserID(shelf *weread.ShelfResponse) string {
+	if len(shelf.Books) > 0 {
+		return fmt.Sprintf("weread_api_%d", shelf.Books[0].ReadUpdateTime)
+	}
+	return "weread_api_unknown"
+}
+
+func wereadBuildProfile(shelf *weread.ShelfResponse) map[string]any {
+	return map[string]any{
+		"user_id":  wereadDeriveUserID(shelf),
+		"name":     "微信读书用户",
+		"avatar":   nil,
+		"books":    len(shelf.Books),
+		"platform": "weread",
+	}
+}
+
+func (s *CommunityService) runBindWereadAPI(ctx context.Context, userID int64, apiKey string, t *BindTask) {
+	log.Printf("[weread-api] runBindWereadAPI started, userID=%d, apiKey=%s…", userID, apiKey[:8])
+	client := weread.NewSkillAPIClient(apiKey)
+
+	// 1. Validate API Key.
+	t.Status = "validating"
+	t.Notify()
+	log.Printf("[weread-api] validating API key…")
+	if err := client.ValidateKey(ctx); err != nil {
+		t.Status = "failed"
+		t.Data.Error = fmt.Errorf("API Key 验证失败: %w", err).Error()
+		t.Notify()
+		log.Printf("[weread-api] validate failed: %v", err)
+		return
+	}
+	log.Printf("[weread-api] API key valid")
+
+	// 2. Fetch shelf to get profile.
+	t.Status = "fetching_profile"
+	t.Data.ScrapePhase = "fetching_profile"
+	t.Notify()
+	log.Printf("[weread-api] fetching shelf…")
+	shelf, err := client.FetchShelf(ctx)
+	if err != nil {
+		t.Status = "failed"
+		t.Data.Error = fmt.Errorf("获取书架失败: %w", err).Error()
+		t.Notify()
+		log.Printf("[weread-api] fetch shelf failed: %v", err)
+		return
+	}
+	log.Printf("[weread-api] fetched shelf: %d books", len(shelf.Books))
+
+	// 3. Save binding + API Key immediately once validated.
+	communityUserID := wereadDeriveUserID(shelf)
+	profile := wereadBuildProfile(shelf)
+
+	stateJSON, _ := json.Marshal(map[string]string{
+		"auth_method": "api_key",
+		"api_key":     apiKey,
+	})
+	s.metaRepo.SaveBinding(ctx, userID, PlatformWeread, communityUserID, profile)
+	s.metaRepo.SaveSessionState(ctx, userID, PlatformWeread, string(stateJSON), nil)
+	log.Printf("[weread-api] binding saved, userID=%s", communityUserID)
+
+	t.Data.UserID = communityUserID
+	t.Data.Profile = profile
+	// Mark as bound immediately so frontend dismisses the overlay.
+	t.Status = "bound"
+	t.Notify()
+
+	// 4. Sync data in the background (books, bookmarks, reviews).
+	onProgress := func(phase string, current, total int) {
+		t.Data.ScrapePhase = phase
+		t.Notify()
+	}
+
+	log.Printf("[weread-api] starting SyncWithAPI (background)…")
+	result, err := weread.SyncWithAPI(ctx, client, s.dataRepo, s.wereadRepo, s.wereadRepo, userID, onProgress)
+	if err != nil {
+		log.Printf("[weread-api] sync failed: %v", err)
+		return
+	}
+
+	log.Printf("[weread-api] sync done: books=%d, bookmarks=%d, notes=%d", result.Books, result.Bookmarks, result.Notes)
+	t.Data.ScrapeCounts = map[string]int64{
+		"books":     int64(result.Books),
+		"bookmarks": int64(result.Bookmarks),
+		"notes":     int64(result.Notes),
+	}
+	t.Notify()
+}
+
+func (s *CommunityService) runSyncWereadAPI(ctx context.Context, userID int64, sessionState string, t *BindTask) {
+	apiKey := extractAPIKey(sessionState)
+	log.Printf("[weread-api] runSyncWereadAPI started, apiKey=%s", func() string {
+		if apiKey != "" {
+			return apiKey[:8] + "…"
+		}
+		return "(empty)"
+	}())
+	client := weread.NewSkillAPIClient(apiKey)
+
+	onProgress := func(phase string, current, total int) {
+		t.Status = "scraping"
+		t.Data.ScrapePhase = phase
+		t.Notify()
+	}
+
+	log.Printf("[weread-api] starting SyncWithAPI…")
+	result, err := weread.SyncWithAPI(ctx, client, s.dataRepo, s.wereadRepo, s.wereadRepo, userID, onProgress)
+	if err != nil {
+		t.Status = "failed"
+		t.Data.Error = err.Error()
+		t.Notify()
+		log.Printf("[weread-api] sync failed: %v", err)
+		return
+	}
+
+	t.Status = "bound"
+	t.Data.ScrapeCounts = map[string]int64{
+		"books":     int64(result.Books),
+		"bookmarks": int64(result.Bookmarks),
+		"notes":     int64(result.Notes),
+	}
+	t.Notify()
+	log.Printf("[weread-api] sync done: books=%d, bookmarks=%d, notes=%d", result.Books, result.Bookmarks, result.Notes)
 }

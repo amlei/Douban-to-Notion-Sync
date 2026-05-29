@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { Search, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Search, ArrowUp, ArrowDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import type { BookItem, MovieItem, NoteItem, BookmarkItem, MemoItem } from "@/core/community/types";
+import { useInfiniteBooks, useInfiniteMovies, useInfiniteNotes, useInfiniteBookmarks, useInfiniteMemos } from "@/core/community/queries";
 
 type DataTabKey = "books" | "movies" | "notes" | "bookmarks" | "memos";
 
@@ -61,37 +62,20 @@ function stripHtml(html: string): string {
   return div.textContent ?? "";
 }
 
-function compare(a: string | number | null | undefined, b: string | number | null | undefined, dir: number): number {
-  if (a == null && b == null) return 0;
-  if (a == null) return dir;
-  if (b == null) return -dir;
-  const va = typeof a === "string" ? a.toLowerCase() : a;
-  const vb = typeof b === "string" ? b.toLowerCase() : b;
-  if (va < vb) return -dir;
-  if (va > vb) return dir;
-  return 0;
-}
-
 interface CollectionProps {
   doubanBound: boolean;
   wereadBound: boolean;
   flomoBound: boolean;
-  books: BookItem[];
-  wereadBooks: BookItem[];
-  movies: MovieItem[];
-  notes: NoteItem[];
-  wereadBookmarks: BookmarkItem[];
-  flomoMemos: MemoItem[];
 }
 
-export function Collection({ doubanBound, wereadBound, flomoBound, books, wereadBooks, movies, notes, wereadBookmarks, flomoMemos }: CollectionProps) {
+export function Collection({ doubanBound, wereadBound, flomoBound }: CollectionProps) {
   const [dataTab, setDataTab] = useState<DataTabKey>("books");
   const [searchText, setSearchText] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [platformFilter, setPlatformFilter] = useState<"all" | "1" | "2">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "done" | "reading" | "unread">("done");
   const [sortBy, setSortBy] = useState("default");
   const [sortDir, setSortDir] = useState<1 | -1>(-1);
-  const [page, setPage] = useState(1);
   const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
 
   const availableTabs = useMemo((): DataTabKey[] => {
@@ -109,127 +93,94 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
     }
   }, [availableTabs, dataTab]);
 
-  const isGalleryTab = dataTab === "books" || dataTab === "movies" || dataTab === "memos";
-  const pageSize = isGalleryTab ? 30 : 10;
-
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchText), 300);
     return () => clearTimeout(timer);
   }, [searchText]);
 
-  useEffect(() => { setPage(1); }, [dataTab, debouncedSearch, platformFilter, sortBy, sortDir]);
-
   const switchTab = useCallback((tab: DataTabKey) => {
     setDataTab(tab);
     setSearchText("");
+    setDebouncedSearch("");
     setPlatformFilter("all");
+    setStatusFilter("done");
     setSortBy("default");
     setSortDir(-1);
     setDetailItem(null);
   }, []);
 
-  const noBinding = !doubanBound && !wereadBound && !flomoBound;
+  // Build filter params
+  const bookFilters = useMemo(() => ({
+    keyword: debouncedSearch || undefined,
+    sort_by: sortBy === "default" ? undefined : sortBy,
+    sort_order: (sortDir === 1 ? "asc" : "desc") as "asc" | "desc",
+    platform_id: platformFilter !== "all" ? Number(platformFilter) : undefined,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+  }), [debouncedSearch, sortBy, sortDir, platformFilter, statusFilter]);
 
-  const allItems = (() => {
-    switch (dataTab) {
-      case "books": return [...books, ...wereadBooks];
-      case "movies": return movies;
-      case "notes": return notes;
-      case "bookmarks": return wereadBookmarks;
-      case "memos": return flomoMemos;
-    }
-  })();
+  const genericFilters = useMemo(() => ({
+    keyword: debouncedSearch || undefined,
+    sort_by: sortBy === "default" ? undefined : sortBy,
+    sort_order: (sortDir === 1 ? "asc" : "desc") as "asc" | "desc",
+  }), [debouncedSearch, sortBy, sortDir]);
 
-  const afterPlatformFilter = dataTab === "books" && platformFilter !== "all"
-    ? (allItems as BookItem[]).filter((b) => String(b.platform_id) === platformFilter)
-    : allItems;
+  // Infinite query hooks — always active for count badges
+  const booksQuery = useInfiniteBooks(bookFilters);
+  const moviesQuery = useInfiniteMovies(genericFilters);
+  const notesQuery = useInfiniteNotes(genericFilters);
+  const bookmarksQuery = useInfiniteBookmarks(genericFilters);
+  const memosQuery = useInfiniteMemos(genericFilters);
 
-  const query = debouncedSearch.toLowerCase();
-  const filtered = query
-    ? afterPlatformFilter.filter((item) => {
-        switch (dataTab) {
-          case "books": {
-            const b = item as BookItem;
-            return [b.title, b.author, b.publisher].some((f) => f?.toLowerCase().includes(query));
-          }
-          case "movies":
-            return (item as MovieItem).title.toLowerCase().includes(query);
-          case "notes":
-            return (item as NoteItem).title.toLowerCase().includes(query);
-          case "bookmarks": {
-            const bm = item as BookmarkItem;
-            return bm.mark_text.toLowerCase().includes(query) || bm.book_title?.toLowerCase().includes(query);
-          }
-          case "memos":
-            return stripHtml((item as MemoItem).content).toLowerCase().includes(query);
+  // Select active query and extract common fields
+  const activeQuery = dataTab === "books" ? booksQuery
+    : dataTab === "movies" ? moviesQuery
+    : dataTab === "notes" ? notesQuery
+    : dataTab === "bookmarks" ? bookmarksQuery
+    : memosQuery;
+
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = activeQuery;
+
+  // Flatten pages into items (cast at render sites per tab)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const items = useMemo(
+    () => (activeQuery.data?.pages.flatMap((p: { items: any[] }) => p.items).filter(Boolean) ?? []) as any[],
+    [activeQuery.data?.pages],
+  );
+
+  const totalCount = activeQuery.data?.pages[0]?.total ?? 0;
+
+  // Tab counts from first page of each query
+  const tabCount = useCallback((tab: DataTabKey): number | null => {
+    const q = tab === "books" ? booksQuery
+      : tab === "movies" ? moviesQuery
+      : tab === "notes" ? notesQuery
+      : tab === "bookmarks" ? bookmarksQuery
+      : memosQuery;
+    return q.data?.pages[0]?.total ?? null;
+  }, [booksQuery.data?.pages, moviesQuery.data?.pages, notesQuery.data?.pages, bookmarksQuery.data?.pages, memosQuery.data?.pages]);
+
+  // IntersectionObserver for infinite scroll
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
         }
-      })
-    : afterPlatformFilter;
+      },
+      { rootMargin: "200px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const sorted = useMemo(() => {
-    const d = sortDir;
-    if (sortBy === "default") {
-      if (dataTab === "memos") {
-        return [...filtered].sort((a, b) =>
-          compare((a as MemoItem).memo_created_at, (b as MemoItem).memo_created_at, -1)
-        );
-      }
-      return filtered;
-    }
-    return [...filtered].sort((a, b) => {
-      switch (dataTab) {
-        case "books": {
-          const ba = a as BookItem, bb = b as BookItem;
-          if (sortBy === "title") return compare(ba.title, bb.title, d);
-          if (sortBy === "rating") return compare(ba.rating, bb.rating, d);
-          if (sortBy === "read_date") return compare(ba.read_date, bb.read_date, d);
-          return 0;
-        }
-        case "movies": {
-          const ma = a as MovieItem, mb = b as MovieItem;
-          if (sortBy === "title") return compare(ma.title, mb.title, d);
-          if (sortBy === "rating") return compare(ma.rating, mb.rating, d);
-          if (sortBy === "watch_date") return compare(ma.watch_date, mb.watch_date, d);
-          return 0;
-        }
-        case "notes": {
-          const na = a as NoteItem, nb = b as NoteItem;
-          if (sortBy === "title") return compare(na.title, nb.title, d);
-          if (sortBy === "date") return compare(na.date, nb.date, d);
-          return 0;
-        }
-        case "bookmarks": {
-          const bma = a as BookmarkItem, bmb = b as BookmarkItem;
-          if (sortBy === "book_title") return compare(bma.book_title, bmb.book_title, d);
-          if (sortBy === "create_time") return compare(bma.create_time, bmb.create_time, d);
-          return 0;
-        }
-        case "memos": {
-          const fma = a as MemoItem, fmb = b as MemoItem;
-          if (sortBy === "created_at") return compare(fma.memo_created_at, fmb.memo_created_at, d);
-          return 0;
-        }
-      }
-    });
-  }, [filtered, sortBy, sortDir, dataTab]);
-
-  const totalCount = sorted.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const safePage = Math.min(page, totalPages);
-  const paged = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
-
-  const pageNumbers = useMemo(() => {
-    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
-    const pages: (number | "...")[] = [];
-    const start = Math.max(1, safePage - 1);
-    const end = Math.min(totalPages, safePage + 1);
-    if (start > 1) { pages.push(1); if (start > 2) pages.push("..."); }
-    for (let i = start; i <= end; i++) pages.push(i);
-    if (end < totalPages) { if (end < totalPages - 1) pages.push("..."); pages.push(totalPages); }
-    return pages;
-  }, [safePage, totalPages]);
-
+  const isGalleryTab = dataTab === "books" || dataTab === "movies" || dataTab === "memos";
   const currentSortOptions = SORT_OPTIONS[dataTab];
+  const noBinding = !doubanBound && !wereadBound && !flomoBound;
 
   if (noBinding) {
     return (
@@ -248,7 +199,7 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
             className={`px-3 py-1.5 text-sm font-medium transition-colors ${dataTab === "books" ? "text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
             onClick={() => switchTab("books")}
           >
-            图书 ({books.length + wereadBooks.length})
+            图书{tabCount("books") != null ? ` (${tabCount("books")})` : ""}
           </button>
         )}
         {doubanBound && (
@@ -257,13 +208,13 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
               className={`px-3 py-1.5 text-sm font-medium transition-colors ${dataTab === "movies" ? "text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
               onClick={() => switchTab("movies")}
             >
-              电影 ({movies.length})
+              电影{tabCount("movies") != null ? ` (${tabCount("movies")})` : ""}
             </button>
             <button
               className={`px-3 py-1.5 text-sm font-medium transition-colors ${dataTab === "notes" ? "text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
               onClick={() => switchTab("notes")}
             >
-              日记 ({notes.length})
+              日记{tabCount("notes") != null ? ` (${tabCount("notes")})` : ""}
             </button>
           </>
         )}
@@ -272,7 +223,7 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
             className={`px-3 py-1.5 text-sm font-medium transition-colors ${dataTab === "bookmarks" ? "text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
             onClick={() => switchTab("bookmarks")}
           >
-            读书笔记 ({wereadBookmarks.length})
+            读书笔记{tabCount("bookmarks") != null ? ` (${tabCount("bookmarks")})` : ""}
           </button>
         )}
         {flomoBound && (
@@ -280,7 +231,7 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
             className={`px-3 py-1.5 text-sm font-medium transition-colors ${dataTab === "memos" ? "text-foreground border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"}`}
             onClick={() => switchTab("memos")}
           >
-            flomo 笔记 ({flomoMemos.length})
+            flomo 笔记{tabCount("memos") != null ? ` (${tabCount("memos")})` : ""}
           </button>
         )}
       </div>
@@ -327,12 +278,24 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
             <option value="2">微信读书</option>
           </select>
         )}
+        {dataTab === "books" && (
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as "all" | "done" | "reading" | "unread")}
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+          >
+            <option value="all">全部状态</option>
+            <option value="done">已读完</option>
+            <option value="reading">在读</option>
+            <option value="unread">未读</option>
+          </select>
+        )}
       </div>
 
       {/* Gallery / List */}
       {isGalleryTab ? (
         <div className={`grid gap-2 ${dataTab === "memos" ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4" : "grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8"}`}>
-          {dataTab === "books" && paged.map((item) => {
+          {dataTab === "books" && items.map((item) => {
             const b = item as BookItem;
             const isWeread = b.platform_id === 2;
             return (
@@ -352,13 +315,13 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
                 <div className="p-1.5">
                   <div className="text-xs font-medium text-foreground truncate">{b.title}</div>
                   <div className="text-[10px] text-muted-foreground truncate">
-                    {b.author || ""}{b.author && b.rating ? " / " : ""}{b.rating ? "★".repeat(b.rating) : ""}
+                    {b.author || ""}{b.author && b.rating ? " / " : ""}{b.rating ? "★".repeat(Math.min(b.rating, 5)) : ""}
                   </div>
                 </div>
               </div>
             );
           })}
-          {dataTab === "movies" && paged.map((item) => {
+          {dataTab === "movies" && items.map((item) => {
             const m = item as MovieItem;
             return (
               <div
@@ -382,7 +345,7 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
               </div>
             );
           })}
-          {dataTab === "memos" && paged.map((item, i) => {
+          {dataTab === "memos" && items.map((item, i) => {
             const m = item as MemoItem;
             return (
               <div
@@ -409,7 +372,7 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
         </div>
       ) : (
         <div className="space-y-2">
-          {dataTab === "notes" && paged.map((item, i) => {
+          {dataTab === "notes" && items.map((item, i) => {
             const n = item as NoteItem;
             return n.url ? (
               <a key={n.url} href={n.url} target="_blank" rel="noreferrer" className="block p-3 rounded-lg hover:bg-accent transition-colors">
@@ -423,7 +386,7 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
               </div>
             );
           })}
-          {dataTab === "bookmarks" && paged.map((item, i) => {
+          {dataTab === "bookmarks" && items.map((item, i) => {
             const bm = item as BookmarkItem;
             return (
               <div key={bm.bookmark_id ?? `${bm.book_id}-${i}`} className="p-3 rounded-lg space-y-1">
@@ -438,31 +401,24 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
         </div>
       )}
 
-      {totalCount === 0 && (
+      {/* Infinite scroll sentinel & loading */}
+      <div ref={sentinelRef} className="h-1" />
+      {isFetchingNextPage && (
+        <div className="flex justify-center py-4">
+          <Loader2 size={20} className="animate-spin text-muted-foreground" />
+        </div>
+      )}
+
+      {/* Empty state */}
+      {totalCount === 0 && !activeQuery.isLoading && (
         <p className="text-sm text-muted-foreground text-center py-8">
           {debouncedSearch ? "没有匹配的搜索结果。" : `暂无${dataTab === "books" ? "图书" : dataTab === "movies" ? "影视" : dataTab === "notes" ? "日记" : dataTab === "bookmarks" ? "笔记" : "flomo 笔记"}数据。`}
         </p>
       )}
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-1">
-          <Button variant="outline" size="icon" className="h-8 w-8" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>
-            <ChevronLeft size={14} />
-          </Button>
-          {pageNumbers.map((p, i) =>
-            p === "..." ? (
-              <span key={`ellipsis-${i}`} className="px-1 text-muted-foreground">...</span>
-            ) : (
-              <Button key={p} variant={p === safePage ? "default" : "outline"} size="icon" className="h-8 w-8" onClick={() => setPage(p)}>
-                {p}
-              </Button>
-            )
-          )}
-          <Button variant="outline" size="icon" className="h-8 w-8" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>
-            <ChevronRight size={14} />
-          </Button>
-          <span className="text-xs text-muted-foreground ml-2">共 {totalCount} 项</span>
-        </div>
+      {/* Total count */}
+      {totalCount > 0 && (
+        <p className="text-xs text-muted-foreground text-center">共 {totalCount} 项</p>
       )}
 
       {/* Detail Modal */}
@@ -483,7 +439,7 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
                 )}
                 <div className="space-y-1 text-sm flex-1">
                   <div className="font-semibold text-foreground">{detailItem.data.title}</div>
-                  {detailItem.data.rating && <div className="text-primary">{"★".repeat(detailItem.data.rating)}{"☆".repeat(5 - detailItem.data.rating)}</div>}
+                  {detailItem.data.rating && <div className="text-primary">{"★".repeat(Math.min(detailItem.data.rating, 5))}{"☆".repeat(5 - Math.min(detailItem.data.rating, 5))}</div>}
                   {detailItem.data.author && <div className="text-muted-foreground">作者: {detailItem.data.author}</div>}
                   {detailItem.data.publisher && <div className="text-muted-foreground">出版社: {detailItem.data.publisher}</div>}
                   {detailItem.data.pub_date && <div className="text-muted-foreground">出版日期: {detailItem.data.pub_date}</div>}
@@ -506,7 +462,7 @@ export function Collection({ doubanBound, wereadBound, flomoBound, books, weread
                 )}
                 <div className="space-y-1 text-sm flex-1">
                   <div className="font-semibold text-foreground">{detailItem.data.title}</div>
-                  {detailItem.data.rating && <div className="text-primary">{"★".repeat(detailItem.data.rating)}{"☆".repeat(5 - detailItem.data.rating)}</div>}
+                  {detailItem.data.rating && <div className="text-primary">{"★".repeat(Math.min(detailItem.data.rating, 5))}{"☆".repeat(5 - Math.min(detailItem.data.rating, 5))}</div>}
                   {detailItem.data.release_date && <div className="text-muted-foreground">上映日期: {detailItem.data.release_date}</div>}
                   {detailItem.data.watch_date && <div className="text-muted-foreground">观影日期: {detailItem.data.watch_date}</div>}
                 </div>

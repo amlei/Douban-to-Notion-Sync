@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { startBinding, unbind as unbindApi, refreshProfile, syncData, connectBindWs } from "./api";
+import { startBinding, startBindingWithApiKey, unbind as unbindApi, refreshProfile, syncData, connectBindWs } from "./api";
 import type { PlatformProfile, PollResult, BindStatus } from "./types";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -16,6 +16,7 @@ export interface PlatformBindingState {
   bound: boolean;
   profile: PlatformProfile | null;
   binding: boolean;
+  validating: boolean;
   bindPhase: PollResult["status"];
   refreshing: boolean;
   syncing: boolean;
@@ -23,6 +24,7 @@ export interface PlatformBindingState {
   scrapePhase: PollResult["scrape_phase"];
   scrapeCounts: Record<string, number>;
   handleBind: () => Promise<void>;
+  handleBindWithApiKey: (apiKey: string) => Promise<void>;
   handleUnbind: () => Promise<void>;
   handleRefresh: () => Promise<void>;
   handleSync: () => Promise<void>;
@@ -38,6 +40,7 @@ export function usePlatformBinding(
   const [bound, setBound] = useState(false);
   const [profile, setProfile] = useState<PlatformProfile | null>(null);
   const [binding, setBinding] = useState(false);
+  const [validating, setValidating] = useState(false);
   const [bindPhase, setBindPhase] = useState<PollResult["status"]>("idle");
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -80,6 +83,40 @@ export function usePlatformBinding(
     } catch {
       callbacks.onError("启动绑定失败");
       setBinding(false);
+    }
+  };
+
+  const handleBindWithApiKey = async (apiKey: string) => {
+    setValidating(true);
+    callbacks.onError(null);
+    try {
+      await startBindingWithApiKey(platform, apiKey);
+      wsRef.current = connectBindWs(platform, {
+        onQr: () => {},
+        onStatus: (status) => {
+          setBindPhase(status);
+        },
+        onScraping: (phase, counts) => {
+          setScrapePhase(phase);
+          setScrapeCounts(counts);
+        },
+        onBound: (_userId, p, counts) => {
+          setBound(true);
+          setProfile(p ?? null);
+          setScrapeCounts(counts);
+          setValidating(false);
+          qc.invalidateQueries({ queryKey: ["bindings"] });
+          qc.invalidateQueries({ queryKey: ["communityData"] });
+          if (callbacks.onBindComplete) callbacks.onBindComplete();
+        },
+        onFailed: (error) => {
+          callbacks.onError(error);
+          setValidating(false);
+        },
+      });
+    } catch {
+      callbacks.onError("启动绑定失败");
+      setValidating(false);
     }
   };
 
@@ -140,9 +177,9 @@ export function usePlatformBinding(
   }, []);
 
   return {
-    bound, profile, binding, bindPhase, refreshing, syncing,
+    bound, profile, binding, validating, bindPhase, refreshing, syncing,
     syncPhase, scrapePhase, scrapeCounts,
-    handleBind, handleUnbind, handleRefresh, handleSync,
+    handleBind, handleBindWithApiKey, handleUnbind, handleRefresh, handleSync,
     initFromApi,
   };
 }

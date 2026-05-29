@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
+
 	"github.com/lifeink-ai/backend/ent"
 	"github.com/lifeink-ai/backend/ent/bookmark"
 	"github.com/lifeink-ai/backend/ent/note"
+
+	platform "github.com/lifeink-ai/backend/pkg/community/pagination"
 )
 
 type WereadRepo struct {
@@ -81,4 +85,119 @@ func (r *WereadRepo) GetNotes(ctx context.Context, userID int64) ([]*ent.Note, e
 	return r.client.Note.Query().
 		Where(note.UserIDEQ(userID)).
 		All(ctx)
+}
+
+// GetPaginatedNotes returns a paginated, filtered, sorted list of notes.
+func (r *WereadRepo) GetPaginatedNotes(
+	ctx context.Context,
+	userID int64,
+	req platform.PaginationRequest,
+) (*platform.PaginatedResponse, error) {
+	query := r.client.Note.Query().Where(note.UserIDEQ(userID))
+
+	if req.Keyword != "" {
+		query = query.Where(note.TitleContainsFold(req.Keyword))
+	}
+
+	total, err := query.Count(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	query = query.Order(noteOrderBy(req.SortBy, req.SortOrder)).
+		Limit(req.PageSize).
+		Offset((req.Page - 1) * req.PageSize)
+
+	notes, err := query.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]map[string]any, len(notes))
+	for i, n := range notes {
+		items[i] = NoteToAPIDict(n)
+	}
+
+	return &platform.PaginatedResponse{
+		Items:      items,
+		Total:      total,
+		Page:       req.Page,
+		PageSize:   req.PageSize,
+		TotalPages: (total + req.PageSize - 1) / req.PageSize,
+	}, nil
+}
+
+func noteOrderBy(sortBy, sortOrder string) note.OrderOption {
+	dir := entsql.OrderDesc()
+	if sortOrder == "asc" {
+		dir = entsql.OrderAsc()
+	}
+	switch sortBy {
+	case "title":
+		return note.ByTitle(dir)
+	case "date":
+		return note.ByDate(dir)
+	default:
+		return note.ByScrapedAt(dir)
+	}
+}
+
+// GetPaginatedBookmarks returns a paginated, filtered, sorted list of bookmarks.
+func (r *WereadRepo) GetPaginatedBookmarks(
+	ctx context.Context,
+	userID int64,
+	req platform.PaginationRequest,
+) (*platform.PaginatedResponse, error) {
+	query := r.client.Bookmark.Query().Where(bookmark.UserIDEQ(userID))
+
+	if req.Keyword != "" {
+		query = query.Where(
+			bookmark.Or(
+				bookmark.MarkTextContainsFold(req.Keyword),
+				bookmark.BookTitleContainsFold(req.Keyword),
+			),
+		)
+	}
+
+	total, err := query.Count(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	query = query.Order(bookmarkOrderBy(req.SortBy, req.SortOrder)).
+		Limit(req.PageSize).
+		Offset((req.Page - 1) * req.PageSize)
+
+	bookmarks, err := query.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]map[string]any, len(bookmarks))
+	for i, b := range bookmarks {
+		items[i] = BookmarkToAPIDict(b)
+	}
+
+	return &platform.PaginatedResponse{
+		Items:      items,
+		Total:      total,
+		Page:       req.Page,
+		PageSize:   req.PageSize,
+		TotalPages: (total + req.PageSize - 1) / req.PageSize,
+	}, nil
+}
+
+func bookmarkOrderBy(sortBy, sortOrder string) bookmark.OrderOption {
+	dir := entsql.OrderDesc()
+	if sortOrder == "asc" {
+		dir = entsql.OrderAsc()
+	}
+	switch sortBy {
+	case "book_title":
+		return bookmark.ByBookTitle(dir)
+	case "create_time":
+		return bookmark.ByCreateTime(dir)
+	default:
+		return bookmark.ByCreateTime(dir)
+	}
 }

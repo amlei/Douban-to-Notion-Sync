@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
+
 	"github.com/lifeink-ai/backend/ent"
 	"github.com/lifeink-ai/backend/ent/book"
 	"github.com/lifeink-ai/backend/ent/conv"
 	"github.com/lifeink-ai/backend/ent/communitymeta"
+	"github.com/lifeink-ai/backend/pkg/community/pagination"
 )
 
 type CommunityMetaRepo struct {
@@ -282,5 +285,75 @@ func getJSONStr(m map[string]any, key string) *string {
 		return &s
 	}
 	return nil
+}
+
+// GetPaginatedBooks returns a paginated, filtered, sorted list of books.
+func (r *DataRepo) GetPaginatedBooks(
+	ctx context.Context,
+	userID int64,
+	req pagination.PaginationRequest,
+	filter pagination.BookFilter,
+) (*pagination.PaginatedResponse, error) {
+	query := r.client.Book.Query().Where(book.UserIDEQ(userID))
+
+	if filter.PlatformID != nil {
+		query = query.Where(book.PlatformIDEQ(*filter.PlatformID))
+	}
+	if filter.Status != "" {
+		query = query.Where(book.StatusEQ(filter.Status))
+	}
+	if req.Keyword != "" {
+		query = query.Where(
+			book.Or(
+				book.TitleContainsFold(req.Keyword),
+				book.AuthorContainsFold(req.Keyword),
+				book.PublisherContainsFold(req.Keyword),
+			),
+		)
+	}
+
+	total, err := query.Count(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	query = query.Order(bookOrderBy(req.SortBy, req.SortOrder)).
+		Limit(req.PageSize).
+		Offset((req.Page - 1) * req.PageSize)
+
+	books, err := query.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]map[string]any, len(books))
+	for i, b := range books {
+		items[i] = conv.BookToAPIDict(b)
+	}
+
+	return &pagination.PaginatedResponse{
+		Items:      items,
+		Total:      total,
+		Page:       req.Page,
+		PageSize:   req.PageSize,
+		TotalPages: (total + req.PageSize - 1) / req.PageSize,
+	}, nil
+}
+
+func bookOrderBy(sortBy, sortOrder string) book.OrderOption {
+	dir := entsql.OrderDesc()
+	if sortOrder == "asc" {
+		dir = entsql.OrderAsc()
+	}
+	switch sortBy {
+	case "title":
+		return book.ByTitle(dir)
+	case "rating":
+		return book.ByRating(dir)
+	case "read_date":
+		return book.ByReadDate(dir)
+	default:
+		return book.ByScrapedAt(dir)
+	}
 }
 

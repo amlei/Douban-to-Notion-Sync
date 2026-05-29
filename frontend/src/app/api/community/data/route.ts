@@ -3,9 +3,10 @@ import { backendUrl, proxyHeaders } from "@/core/api/server";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const platform = searchParams.get("platform") || "all";
 
-  const backendRes = await fetch(backendUrl(`/api/community/data?platform=${platform}`), {
+  // Forward all query params to the backend
+  const qs = searchParams.toString();
+  const backendRes = await fetch(backendUrl(`/api/community/data${qs ? `?${qs}` : ""}`), {
     headers: proxyHeaders(req),
   });
 

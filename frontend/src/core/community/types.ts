@@ -19,7 +19,7 @@ export interface PollResult {
   qr_base64?: string;
   user_id?: string;
   profile?: PlatformProfile;
-  scrape_phase?: "books" | "movies" | "bookmarks" | "memos" | "done";
+  scrape_phase?: "books" | "movies" | "bookmarks" | "memos" | "reviews" | "validating" | "fetching_profile" | "done";
   scrape_counts?: Record<string, number>;
   error?: string;
 }
@@ -99,3 +99,28 @@ export interface CommunityData {
 
 export type AllCommunityData = Record<string, CommunityData>;
 export type AllBindings = Record<string, BindStatus>;
+
+// ---- Pagination types ----
+
+export type CommunityDataType = "books" | "movies" | "notes" | "bookmarks" | "memos";
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface PaginationParams {
+  page: number;
+  page_size: number;
+  keyword?: string;
+  sort_by?: string;
+  sort_order?: "asc" | "desc";
+}
+
+export interface BookFilterParams extends PaginationParams {
+  platform_id?: number;
+  status?: "done" | "reading" | "unread";
+}

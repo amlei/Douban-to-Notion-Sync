@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { RefreshCw, BookOpen } from "lucide-react";
-import { useCommunityDataState, SyncManage } from "@/components/workspace/data/sync-manage";
+import { SyncManage } from "@/components/workspace/data/sync-manage";
 import { Collection } from "@/components/workspace/data/collection";
+import { useAllBindings } from "@/core/community/queries";
 
 type Tab = "sync" | "data";
 
@@ -14,11 +15,11 @@ const tabs: { key: Tab; label: string; icon: typeof RefreshCw }[] = [
 
 export default function DataPage() {
   const [tab, setTab] = useState<Tab>("sync");
-  const {
-    doubanBound, wereadBound, flomoBound,
-    books, wereadBooks, movies, notes,
-    wereadBookmarks, flomoMemos,
-  } = useCommunityDataState();
+  const { data: bindings } = useAllBindings();
+
+  const doubanBound = bindings?.douban?.bound ?? false;
+  const wereadBound = bindings?.weread?.bound ?? false;
+  const flomoBound = bindings?.flomo?.bound ?? false;
 
   return (
     <div className="flex flex-col h-full">
@@ -49,12 +50,6 @@ export default function DataPage() {
             doubanBound={doubanBound}
             wereadBound={wereadBound}
             flomoBound={flomoBound}
-            books={books}
-            wereadBooks={wereadBooks}
-            movies={movies}
-            notes={notes}
-            wereadBookmarks={wereadBookmarks}
-            flomoMemos={flomoMemos}
           />
         )}
       </div>

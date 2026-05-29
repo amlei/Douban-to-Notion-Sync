@@ -1,11 +1,13 @@
 package platform
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/lifeink-ai/backend/pkg/auth"
+	"github.com/lifeink-ai/backend/pkg/community/pagination"
 )
 
 type CommunityHandler struct {
@@ -65,7 +67,20 @@ func (h *CommunityHandler) bind(c *gin.Context) {
 
 	case "start":
 		channel := "msedge"
-		taskID, err := h.svc.StartBind(ctx, user.ID, platform, channel)
+		apiKey := ""
+		var body struct {
+			APIKey string `json:"api_key"`
+		}
+		if err := c.ShouldBindJSON(&body); err == nil {
+			apiKey = body.APIKey
+		}
+		log.Printf("[community] start bind: platform=%s, apiKey=%s", platform, func() string {
+			if apiKey != "" {
+				return apiKey[:8] + "…"
+			}
+			return "(empty)"
+		}())
+		taskID, err := h.svc.StartBind(ctx, user.ID, platform, channel, apiKey)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -111,15 +126,40 @@ func (h *CommunityHandler) sync(c *gin.Context) {
 }
 
 func (h *CommunityHandler) data(c *gin.Context) {
-	platform := c.DefaultQuery("platform", "all")
-	if platform != "all" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Use platform=all to fetch all platform data"})
-		return
-	}
-
 	user := auth.GetUser(c)
 	if user == nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"detail": "未登录"})
+		return
+	}
+
+	// Paginated mode: type parameter present
+	dataType := c.Query("type")
+	if dataType != "" {
+		var req pagination.PaginationRequest
+		if err := c.ShouldBindQuery(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		req.Defaults()
+
+		var bookFilter pagination.BookFilter
+		if dataType == "books" {
+			c.ShouldBindQuery(&bookFilter)
+		}
+
+		result, err := h.svc.GetPaginatedData(c.Request.Context(), user.ID, dataType, req, bookFilter)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, result)
+		return
+	}
+
+	// Legacy mode: return all data at once
+	platform := c.DefaultQuery("platform", "all")
+	if platform != "all" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Use platform=all to fetch all platform data"})
 		return
 	}
 

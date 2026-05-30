@@ -84,6 +84,26 @@ func Body(v string) predicate.Note {
 	return predicate.Note(sql.FieldEQ(FieldBody, v))
 }
 
+// BookID applies equality check predicate on the "book_id" field. It's identical to BookIDEQ.
+func BookID(v string) predicate.Note {
+	return predicate.Note(sql.FieldEQ(FieldBookID, v))
+}
+
+// ChapterName applies equality check predicate on the "chapter_name" field. It's identical to ChapterNameEQ.
+func ChapterName(v string) predicate.Note {
+	return predicate.Note(sql.FieldEQ(FieldChapterName, v))
+}
+
+// Abstract applies equality check predicate on the "abstract" field. It's identical to AbstractEQ.
+func Abstract(v string) predicate.Note {
+	return predicate.Note(sql.FieldEQ(FieldAbstract, v))
+}
+
+// ReviewID applies equality check predicate on the "review_id" field. It's identical to ReviewIDEQ.
+func ReviewID(v string) predicate.Note {
+	return predicate.Note(sql.FieldEQ(FieldReviewID, v))
+}
+
 // ScrapedAt applies equality check predicate on the "scraped_at" field. It's identical to ScrapedAtEQ.
 func ScrapedAt(v time.Time) predicate.Note {
 	return predicate.Note(sql.FieldEQ(FieldScrapedAt, v))
@@ -492,6 +512,306 @@ func BodyEqualFold(v string) predicate.Note {
 // BodyContainsFold applies the ContainsFold predicate on the "body" field.
 func BodyContainsFold(v string) predicate.Note {
 	return predicate.Note(sql.FieldContainsFold(FieldBody, v))
+}
+
+// BookIDEQ applies the EQ predicate on the "book_id" field.
+func BookIDEQ(v string) predicate.Note {
+	return predicate.Note(sql.FieldEQ(FieldBookID, v))
+}
+
+// BookIDNEQ applies the NEQ predicate on the "book_id" field.
+func BookIDNEQ(v string) predicate.Note {
+	return predicate.Note(sql.FieldNEQ(FieldBookID, v))
+}
+
+// BookIDIn applies the In predicate on the "book_id" field.
+func BookIDIn(vs ...string) predicate.Note {
+	return predicate.Note(sql.FieldIn(FieldBookID, vs...))
+}
+
+// BookIDNotIn applies the NotIn predicate on the "book_id" field.
+func BookIDNotIn(vs ...string) predicate.Note {
+	return predicate.Note(sql.FieldNotIn(FieldBookID, vs...))
+}
+
+// BookIDGT applies the GT predicate on the "book_id" field.
+func BookIDGT(v string) predicate.Note {
+	return predicate.Note(sql.FieldGT(FieldBookID, v))
+}
+
+// BookIDGTE applies the GTE predicate on the "book_id" field.
+func BookIDGTE(v string) predicate.Note {
+	return predicate.Note(sql.FieldGTE(FieldBookID, v))
+}
+
+// BookIDLT applies the LT predicate on the "book_id" field.
+func BookIDLT(v string) predicate.Note {
+	return predicate.Note(sql.FieldLT(FieldBookID, v))
+}
+
+// BookIDLTE applies the LTE predicate on the "book_id" field.
+func BookIDLTE(v string) predicate.Note {
+	return predicate.Note(sql.FieldLTE(FieldBookID, v))
+}
+
+// BookIDContains applies the Contains predicate on the "book_id" field.
+func BookIDContains(v string) predicate.Note {
+	return predicate.Note(sql.FieldContains(FieldBookID, v))
+}
+
+// BookIDHasPrefix applies the HasPrefix predicate on the "book_id" field.
+func BookIDHasPrefix(v string) predicate.Note {
+	return predicate.Note(sql.FieldHasPrefix(FieldBookID, v))
+}
+
+// BookIDHasSuffix applies the HasSuffix predicate on the "book_id" field.
+func BookIDHasSuffix(v string) predicate.Note {
+	return predicate.Note(sql.FieldHasSuffix(FieldBookID, v))
+}
+
+// BookIDIsNil applies the IsNil predicate on the "book_id" field.
+func BookIDIsNil() predicate.Note {
+	return predicate.Note(sql.FieldIsNull(FieldBookID))
+}
+
+// BookIDNotNil applies the NotNil predicate on the "book_id" field.
+func BookIDNotNil() predicate.Note {
+	return predicate.Note(sql.FieldNotNull(FieldBookID))
+}
+
+// BookIDEqualFold applies the EqualFold predicate on the "book_id" field.
+func BookIDEqualFold(v string) predicate.Note {
+	return predicate.Note(sql.FieldEqualFold(FieldBookID, v))
+}
+
+// BookIDContainsFold applies the ContainsFold predicate on the "book_id" field.
+func BookIDContainsFold(v string) predicate.Note {
+	return predicate.Note(sql.FieldContainsFold(FieldBookID, v))
+}
+
+// ChapterNameEQ applies the EQ predicate on the "chapter_name" field.
+func ChapterNameEQ(v string) predicate.Note {
+	return predicate.Note(sql.FieldEQ(FieldChapterName, v))
+}
+
+// ChapterNameNEQ applies the NEQ predicate on the "chapter_name" field.
+func ChapterNameNEQ(v string) predicate.Note {
+	return predicate.Note(sql.FieldNEQ(FieldChapterName, v))
+}
+
+// ChapterNameIn applies the In predicate on the "chapter_name" field.
+func ChapterNameIn(vs ...string) predicate.Note {
+	return predicate.Note(sql.FieldIn(FieldChapterName, vs...))
+}
+
+// ChapterNameNotIn applies the NotIn predicate on the "chapter_name" field.
+func ChapterNameNotIn(vs ...string) predicate.Note {
+	return predicate.Note(sql.FieldNotIn(FieldChapterName, vs...))
+}
+
+// ChapterNameGT applies the GT predicate on the "chapter_name" field.
+func ChapterNameGT(v string) predicate.Note {
+	return predicate.Note(sql.FieldGT(FieldChapterName, v))
+}
+
+// ChapterNameGTE applies the GTE predicate on the "chapter_name" field.
+func ChapterNameGTE(v string) predicate.Note {
+	return predicate.Note(sql.FieldGTE(FieldChapterName, v))
+}
+
+// ChapterNameLT applies the LT predicate on the "chapter_name" field.
+func ChapterNameLT(v string) predicate.Note {
+	return predicate.Note(sql.FieldLT(FieldChapterName, v))
+}
+
+// ChapterNameLTE applies the LTE predicate on the "chapter_name" field.
+func ChapterNameLTE(v string) predicate.Note {
+	return predicate.Note(sql.FieldLTE(FieldChapterName, v))
+}
+
+// ChapterNameContains applies the Contains predicate on the "chapter_name" field.
+func ChapterNameContains(v string) predicate.Note {
+	return predicate.Note(sql.FieldContains(FieldChapterName, v))
+}
+
+// ChapterNameHasPrefix applies the HasPrefix predicate on the "chapter_name" field.
+func ChapterNameHasPrefix(v string) predicate.Note {
+	return predicate.Note(sql.FieldHasPrefix(FieldChapterName, v))
+}
+
+// ChapterNameHasSuffix applies the HasSuffix predicate on the "chapter_name" field.
+func ChapterNameHasSuffix(v string) predicate.Note {
+	return predicate.Note(sql.FieldHasSuffix(FieldChapterName, v))
+}
+
+// ChapterNameIsNil applies the IsNil predicate on the "chapter_name" field.
+func ChapterNameIsNil() predicate.Note {
+	return predicate.Note(sql.FieldIsNull(FieldChapterName))
+}
+
+// ChapterNameNotNil applies the NotNil predicate on the "chapter_name" field.
+func ChapterNameNotNil() predicate.Note {
+	return predicate.Note(sql.FieldNotNull(FieldChapterName))
+}
+
+// ChapterNameEqualFold applies the EqualFold predicate on the "chapter_name" field.
+func ChapterNameEqualFold(v string) predicate.Note {
+	return predicate.Note(sql.FieldEqualFold(FieldChapterName, v))
+}
+
+// ChapterNameContainsFold applies the ContainsFold predicate on the "chapter_name" field.
+func ChapterNameContainsFold(v string) predicate.Note {
+	return predicate.Note(sql.FieldContainsFold(FieldChapterName, v))
+}
+
+// AbstractEQ applies the EQ predicate on the "abstract" field.
+func AbstractEQ(v string) predicate.Note {
+	return predicate.Note(sql.FieldEQ(FieldAbstract, v))
+}
+
+// AbstractNEQ applies the NEQ predicate on the "abstract" field.
+func AbstractNEQ(v string) predicate.Note {
+	return predicate.Note(sql.FieldNEQ(FieldAbstract, v))
+}
+
+// AbstractIn applies the In predicate on the "abstract" field.
+func AbstractIn(vs ...string) predicate.Note {
+	return predicate.Note(sql.FieldIn(FieldAbstract, vs...))
+}
+
+// AbstractNotIn applies the NotIn predicate on the "abstract" field.
+func AbstractNotIn(vs ...string) predicate.Note {
+	return predicate.Note(sql.FieldNotIn(FieldAbstract, vs...))
+}
+
+// AbstractGT applies the GT predicate on the "abstract" field.
+func AbstractGT(v string) predicate.Note {
+	return predicate.Note(sql.FieldGT(FieldAbstract, v))
+}
+
+// AbstractGTE applies the GTE predicate on the "abstract" field.
+func AbstractGTE(v string) predicate.Note {
+	return predicate.Note(sql.FieldGTE(FieldAbstract, v))
+}
+
+// AbstractLT applies the LT predicate on the "abstract" field.
+func AbstractLT(v string) predicate.Note {
+	return predicate.Note(sql.FieldLT(FieldAbstract, v))
+}
+
+// AbstractLTE applies the LTE predicate on the "abstract" field.
+func AbstractLTE(v string) predicate.Note {
+	return predicate.Note(sql.FieldLTE(FieldAbstract, v))
+}
+
+// AbstractContains applies the Contains predicate on the "abstract" field.
+func AbstractContains(v string) predicate.Note {
+	return predicate.Note(sql.FieldContains(FieldAbstract, v))
+}
+
+// AbstractHasPrefix applies the HasPrefix predicate on the "abstract" field.
+func AbstractHasPrefix(v string) predicate.Note {
+	return predicate.Note(sql.FieldHasPrefix(FieldAbstract, v))
+}
+
+// AbstractHasSuffix applies the HasSuffix predicate on the "abstract" field.
+func AbstractHasSuffix(v string) predicate.Note {
+	return predicate.Note(sql.FieldHasSuffix(FieldAbstract, v))
+}
+
+// AbstractIsNil applies the IsNil predicate on the "abstract" field.
+func AbstractIsNil() predicate.Note {
+	return predicate.Note(sql.FieldIsNull(FieldAbstract))
+}
+
+// AbstractNotNil applies the NotNil predicate on the "abstract" field.
+func AbstractNotNil() predicate.Note {
+	return predicate.Note(sql.FieldNotNull(FieldAbstract))
+}
+
+// AbstractEqualFold applies the EqualFold predicate on the "abstract" field.
+func AbstractEqualFold(v string) predicate.Note {
+	return predicate.Note(sql.FieldEqualFold(FieldAbstract, v))
+}
+
+// AbstractContainsFold applies the ContainsFold predicate on the "abstract" field.
+func AbstractContainsFold(v string) predicate.Note {
+	return predicate.Note(sql.FieldContainsFold(FieldAbstract, v))
+}
+
+// ReviewIDEQ applies the EQ predicate on the "review_id" field.
+func ReviewIDEQ(v string) predicate.Note {
+	return predicate.Note(sql.FieldEQ(FieldReviewID, v))
+}
+
+// ReviewIDNEQ applies the NEQ predicate on the "review_id" field.
+func ReviewIDNEQ(v string) predicate.Note {
+	return predicate.Note(sql.FieldNEQ(FieldReviewID, v))
+}
+
+// ReviewIDIn applies the In predicate on the "review_id" field.
+func ReviewIDIn(vs ...string) predicate.Note {
+	return predicate.Note(sql.FieldIn(FieldReviewID, vs...))
+}
+
+// ReviewIDNotIn applies the NotIn predicate on the "review_id" field.
+func ReviewIDNotIn(vs ...string) predicate.Note {
+	return predicate.Note(sql.FieldNotIn(FieldReviewID, vs...))
+}
+
+// ReviewIDGT applies the GT predicate on the "review_id" field.
+func ReviewIDGT(v string) predicate.Note {
+	return predicate.Note(sql.FieldGT(FieldReviewID, v))
+}
+
+// ReviewIDGTE applies the GTE predicate on the "review_id" field.
+func ReviewIDGTE(v string) predicate.Note {
+	return predicate.Note(sql.FieldGTE(FieldReviewID, v))
+}
+
+// ReviewIDLT applies the LT predicate on the "review_id" field.
+func ReviewIDLT(v string) predicate.Note {
+	return predicate.Note(sql.FieldLT(FieldReviewID, v))
+}
+
+// ReviewIDLTE applies the LTE predicate on the "review_id" field.
+func ReviewIDLTE(v string) predicate.Note {
+	return predicate.Note(sql.FieldLTE(FieldReviewID, v))
+}
+
+// ReviewIDContains applies the Contains predicate on the "review_id" field.
+func ReviewIDContains(v string) predicate.Note {
+	return predicate.Note(sql.FieldContains(FieldReviewID, v))
+}
+
+// ReviewIDHasPrefix applies the HasPrefix predicate on the "review_id" field.
+func ReviewIDHasPrefix(v string) predicate.Note {
+	return predicate.Note(sql.FieldHasPrefix(FieldReviewID, v))
+}
+
+// ReviewIDHasSuffix applies the HasSuffix predicate on the "review_id" field.
+func ReviewIDHasSuffix(v string) predicate.Note {
+	return predicate.Note(sql.FieldHasSuffix(FieldReviewID, v))
+}
+
+// ReviewIDIsNil applies the IsNil predicate on the "review_id" field.
+func ReviewIDIsNil() predicate.Note {
+	return predicate.Note(sql.FieldIsNull(FieldReviewID))
+}
+
+// ReviewIDNotNil applies the NotNil predicate on the "review_id" field.
+func ReviewIDNotNil() predicate.Note {
+	return predicate.Note(sql.FieldNotNull(FieldReviewID))
+}
+
+// ReviewIDEqualFold applies the EqualFold predicate on the "review_id" field.
+func ReviewIDEqualFold(v string) predicate.Note {
+	return predicate.Note(sql.FieldEqualFold(FieldReviewID, v))
+}
+
+// ReviewIDContainsFold applies the ContainsFold predicate on the "review_id" field.
+func ReviewIDContainsFold(v string) predicate.Note {
+	return predicate.Note(sql.FieldContainsFold(FieldReviewID, v))
 }
 
 // ScrapedAtEQ applies the EQ predicate on the "scraped_at" field.

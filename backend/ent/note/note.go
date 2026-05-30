@@ -23,6 +23,14 @@ const (
 	FieldLocation = "location"
 	// FieldBody holds the string denoting the body field in the database.
 	FieldBody = "body"
+	// FieldBookID holds the string denoting the book_id field in the database.
+	FieldBookID = "book_id"
+	// FieldChapterName holds the string denoting the chapter_name field in the database.
+	FieldChapterName = "chapter_name"
+	// FieldAbstract holds the string denoting the abstract field in the database.
+	FieldAbstract = "abstract"
+	// FieldReviewID holds the string denoting the review_id field in the database.
+	FieldReviewID = "review_id"
 	// FieldScrapedAt holds the string denoting the scraped_at field in the database.
 	FieldScrapedAt = "scraped_at"
 	// Table holds the table name of the note in the database.
@@ -38,6 +46,10 @@ var Columns = []string{
 	FieldDate,
 	FieldLocation,
 	FieldBody,
+	FieldBookID,
+	FieldChapterName,
+	FieldAbstract,
+	FieldReviewID,
 	FieldScrapedAt,
 }
 
@@ -92,6 +104,26 @@ func ByLocation(opts ...sql.OrderTermOption) OrderOption {
 // ByBody orders the results by the body field.
 func ByBody(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBody, opts...).ToFunc()
+}
+
+// ByBookID orders the results by the book_id field.
+func ByBookID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBookID, opts...).ToFunc()
+}
+
+// ByChapterName orders the results by the chapter_name field.
+func ByChapterName(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldChapterName, opts...).ToFunc()
+}
+
+// ByAbstract orders the results by the abstract field.
+func ByAbstract(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAbstract, opts...).ToFunc()
+}
+
+// ByReviewID orders the results by the review_id field.
+func ByReviewID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReviewID, opts...).ToFunc()
 }
 
 // ByScrapedAt orders the results by the scraped_at field.

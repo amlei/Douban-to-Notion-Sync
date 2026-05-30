@@ -122,11 +122,12 @@ type ReviewListResponse struct {
 
 // NotebookBook is a book entry from /user/notebooks.
 type NotebookBook struct {
-	BookID        string `json:"bookId"`
-	ReviewCount   int    `json:"reviewCount"`
-	NoteCount     int    `json:"noteCount"`
-	BookmarkCount int    `json:"bookmarkCount"`
-	Sort          int64  `json:"sort"`
+	BookID        string    `json:"bookId"`
+	Book          *BookInfo `json:"book"`
+	ReviewCount   int       `json:"reviewCount"`
+	NoteCount     int       `json:"noteCount"`
+	BookmarkCount int       `json:"bookmarkCount"`
+	Sort          int64     `json:"sort"`
 }
 
 // NotebooksResponse is the response from /user/notebooks.

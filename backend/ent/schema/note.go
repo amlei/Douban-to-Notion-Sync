@@ -21,6 +21,10 @@ func (Note) Fields() []ent.Field {
 		field.String("date").Optional().Nillable(),
 		field.String("location").Optional().Nillable(),
 		field.String("body").Optional().Nillable(),
+		field.String("book_id").Optional().Nillable(),
+		field.String("chapter_name").Optional().Nillable(),
+		field.String("abstract").Optional().Nillable(),
+		field.String("review_id").Optional().Nillable(),
 		field.Time("scraped_at"),
 	}
 }
@@ -32,5 +36,6 @@ func (Note) Edges() []ent.Edge {
 func (Note) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("user_id", "url").Unique(),
+		index.Fields("user_id", "book_id"),
 	}
 }

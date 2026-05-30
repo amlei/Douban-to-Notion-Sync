@@ -287,6 +287,13 @@ func getJSONStr(m map[string]any, key string) *string {
 	return nil
 }
 
+// CountBooks returns the number of books for a user filtered by platform.
+func (r *DataRepo) CountBooks(ctx context.Context, userID int64, platformID int) (int, error) {
+	return r.client.Book.Query().
+		Where(book.UserIDEQ(userID), book.PlatformIDEQ(platformID)).
+		Count(ctx)
+}
+
 // GetPaginatedBooks returns a paginated, filtered, sorted list of books.
 func (r *DataRepo) GetPaginatedBooks(
 	ctx context.Context,

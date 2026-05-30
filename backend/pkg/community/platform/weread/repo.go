@@ -58,13 +58,16 @@ func (r *WereadRepo) UpsertNotes(ctx context.Context, userID int64, items []map[
 	for _, item := range items {
 		title := fmt.Sprintf("%v", item["title"])
 		_, err := r.db.ExecContext(ctx, `
-			INSERT INTO notes (user_id, title, url, date, location, body, scraped_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			INSERT INTO notes (user_id, title, url, date, location, body, book_id, chapter_name, abstract, review_id, scraped_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 			ON CONFLICT (user_id, url) DO UPDATE SET
-				title = EXCLUDED.title, date = EXCLUDED.date, location = EXCLUDED.location, body = EXCLUDED.body`,
+				title = EXCLUDED.title, date = EXCLUDED.date, location = EXCLUDED.location, body = EXCLUDED.body,
+				book_id = EXCLUDED.book_id, chapter_name = EXCLUDED.chapter_name, abstract = EXCLUDED.abstract, review_id = EXCLUDED.review_id`,
 			userID, title,
 			getStr(item, "url"), getStr(item, "date"),
 			getStr(item, "location"), getStr(item, "body"),
+			getStr(item, "book_id"), getStr(item, "chapter_name"),
+			getStr(item, "abstract"), getStr(item, "review_id"),
 			time.Now(),
 		)
 		if err != nil {
@@ -87,13 +90,28 @@ func (r *WereadRepo) GetNotes(ctx context.Context, userID int64) ([]*ent.Note, e
 		All(ctx)
 }
 
+// CountNotes returns the total number of notes for a user.
+func (r *WereadRepo) CountNotes(ctx context.Context, userID int64) (int, error) {
+	return r.client.Note.Query().Where(note.UserIDEQ(userID)).Count(ctx)
+}
+
+// CountBookmarks returns the total number of bookmarks for a user.
+func (r *WereadRepo) CountBookmarks(ctx context.Context, userID int64) (int, error) {
+	return r.client.Bookmark.Query().Where(bookmark.UserIDEQ(userID)).Count(ctx)
+}
+
 // GetPaginatedNotes returns a paginated, filtered, sorted list of notes.
 func (r *WereadRepo) GetPaginatedNotes(
 	ctx context.Context,
 	userID int64,
 	req platform.PaginationRequest,
+	filter platform.BookmarkNoteFilter,
 ) (*platform.PaginatedResponse, error) {
 	query := r.client.Note.Query().Where(note.UserIDEQ(userID))
+
+	if filter.BookID != "" {
+		query = query.Where(note.BookIDEQ(filter.BookID))
+	}
 
 	if req.Keyword != "" {
 		query = query.Where(note.TitleContainsFold(req.Keyword))
@@ -147,9 +165,13 @@ func (r *WereadRepo) GetPaginatedBookmarks(
 	ctx context.Context,
 	userID int64,
 	req platform.PaginationRequest,
+	filter platform.BookmarkNoteFilter,
 ) (*platform.PaginatedResponse, error) {
 	query := r.client.Bookmark.Query().Where(bookmark.UserIDEQ(userID))
 
+	if filter.BookID != "" {
+		query = query.Where(bookmark.BookIDEQ(filter.BookID))
+	}
 	if req.Keyword != "" {
 		query = query.Where(
 			bookmark.Or(

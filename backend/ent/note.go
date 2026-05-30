@@ -29,6 +29,14 @@ type Note struct {
 	Location *string `json:"location,omitempty"`
 	// Body holds the value of the "body" field.
 	Body *string `json:"body,omitempty"`
+	// BookID holds the value of the "book_id" field.
+	BookID *string `json:"book_id,omitempty"`
+	// ChapterName holds the value of the "chapter_name" field.
+	ChapterName *string `json:"chapter_name,omitempty"`
+	// Abstract holds the value of the "abstract" field.
+	Abstract *string `json:"abstract,omitempty"`
+	// ReviewID holds the value of the "review_id" field.
+	ReviewID *string `json:"review_id,omitempty"`
 	// ScrapedAt holds the value of the "scraped_at" field.
 	ScrapedAt    time.Time `json:"scraped_at,omitempty"`
 	selectValues sql.SelectValues
@@ -41,7 +49,7 @@ func (*Note) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case note.FieldID, note.FieldUserID:
 			values[i] = new(sql.NullInt64)
-		case note.FieldTitle, note.FieldURL, note.FieldDate, note.FieldLocation, note.FieldBody:
+		case note.FieldTitle, note.FieldURL, note.FieldDate, note.FieldLocation, note.FieldBody, note.FieldBookID, note.FieldChapterName, note.FieldAbstract, note.FieldReviewID:
 			values[i] = new(sql.NullString)
 		case note.FieldScrapedAt:
 			values[i] = new(sql.NullTime)
@@ -105,6 +113,34 @@ func (_m *Note) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Body = new(string)
 				*_m.Body = value.String
+			}
+		case note.FieldBookID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field book_id", values[i])
+			} else if value.Valid {
+				_m.BookID = new(string)
+				*_m.BookID = value.String
+			}
+		case note.FieldChapterName:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field chapter_name", values[i])
+			} else if value.Valid {
+				_m.ChapterName = new(string)
+				*_m.ChapterName = value.String
+			}
+		case note.FieldAbstract:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field abstract", values[i])
+			} else if value.Valid {
+				_m.Abstract = new(string)
+				*_m.Abstract = value.String
+			}
+		case note.FieldReviewID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field review_id", values[i])
+			} else if value.Valid {
+				_m.ReviewID = new(string)
+				*_m.ReviewID = value.String
 			}
 		case note.FieldScrapedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -171,6 +207,26 @@ func (_m *Note) String() string {
 	builder.WriteString(", ")
 	if v := _m.Body; v != nil {
 		builder.WriteString("body=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.BookID; v != nil {
+		builder.WriteString("book_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ChapterName; v != nil {
+		builder.WriteString("chapter_name=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.Abstract; v != nil {
+		builder.WriteString("abstract=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ReviewID; v != nil {
+		builder.WriteString("review_id=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")

@@ -1,5 +1,5 @@
 import { apiFetch } from "@/core/api/client";
-import type { BindStatus, PollResult, CommunityData, CommunityDataType, PaginatedResponse, PaginationParams } from "./types";
+import type { BindStatus, PollResult, CommunityDataType, PaginatedResponse, PaginationParams } from "./types";
 
 async function bindAction(
   action: "status" | "start" | "refresh" | "delete",
@@ -46,11 +46,6 @@ export async function syncData(platform: string): Promise<{ task_id: string }> {
   return res.json();
 }
 
-export async function getAllCommunityData(): Promise<Record<string, CommunityData>> {
-  const res = await apiFetch("/api/community/data?platform=all");
-  return res.json();
-}
-
 export async function getPaginatedCommunityData<T>(
   type: CommunityDataType,
   params: PaginationParams,
@@ -64,6 +59,9 @@ export async function getPaginatedCommunityData<T>(
   if (params.sort_order) sp.set("sort_order", params.sort_order);
   if ("platform_id" in params && params.platform_id != null) {
     sp.set("platform_id", String((params as Record<string, unknown>).platform_id));
+  }
+  if ("book_id" in params && (params as Record<string, unknown>).book_id) {
+    sp.set("book_id", String((params as Record<string, unknown>).book_id));
   }
   if ("status" in params && (params as Record<string, unknown>).status) {
     sp.set("status", String((params as Record<string, unknown>).status));

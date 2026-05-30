@@ -71,7 +71,7 @@ export function usePlatformBinding(
           setBinding(false);
           callbacks.onQr(null);
           qc.invalidateQueries({ queryKey: ["bindings"] });
-          qc.invalidateQueries({ queryKey: ["communityData"] });
+          qc.invalidateQueries({ queryKey: ["communityData", "infinite"] });
           if (callbacks.onBindComplete) callbacks.onBindComplete();
         },
         onFailed: (error) => {
@@ -106,7 +106,7 @@ export function usePlatformBinding(
           setScrapeCounts(counts);
           setValidating(false);
           qc.invalidateQueries({ queryKey: ["bindings"] });
-          qc.invalidateQueries({ queryKey: ["communityData"] });
+          qc.invalidateQueries({ queryKey: ["communityData", "infinite"] });
           if (callbacks.onBindComplete) callbacks.onBindComplete();
         },
         onFailed: (error) => {
@@ -126,7 +126,7 @@ export function usePlatformBinding(
     setProfile(null);
     setScrapeCounts({});
     qc.invalidateQueries({ queryKey: ["bindings"] });
-    qc.invalidateQueries({ queryKey: ["communityData"] });
+    qc.invalidateQueries({ queryKey: ["communityData", "infinite"] });
     if (callbacks.onUnbind) callbacks.onUnbind();
   };
 
@@ -157,7 +157,7 @@ export function usePlatformBinding(
           setScrapeCounts(counts);
           setSyncing(false);
           qc.invalidateQueries({ queryKey: ["bindings"] });
-          qc.invalidateQueries({ queryKey: ["communityData"] });
+          qc.invalidateQueries({ queryKey: ["communityData", "infinite"] });
           if (callbacks.onBindComplete) callbacks.onBindComplete();
         },
         onFailed: () => {

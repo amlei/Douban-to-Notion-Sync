@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { RefreshCw, BookOpen } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { SyncManage } from "@/components/workspace/data/sync-manage";
 import { Collection } from "@/components/workspace/data/collection";
 import { useAllBindings } from "@/core/community/queries";
@@ -20,6 +21,14 @@ export default function DataPage() {
   const doubanBound = bindings?.douban?.bound ?? false;
   const wereadBound = bindings?.weread?.bound ?? false;
   const flomoBound = bindings?.flomo?.bound ?? false;
+
+  const dataCounts = {
+    books: (bindings?.douban?.data_counts?.books ?? 0) + (bindings?.weread?.data_counts?.books ?? 0),
+    movies: bindings?.douban?.data_counts?.movies ?? 0,
+    notes: bindings?.weread?.data_counts?.notes ?? 0,
+    bookmarks: bindings?.weread?.data_counts?.bookmarks ?? 0,
+    memos: bindings?.flomo?.data_counts?.memos ?? 0,
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -43,16 +52,19 @@ export default function DataPage() {
         })}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-4">
-        {tab === "sync" && <SyncManage />}
-        {tab === "data" && (
-          <Collection
-            doubanBound={doubanBound}
-            wereadBound={wereadBound}
-            flomoBound={flomoBound}
-          />
-        )}
-      </div>
+      <ScrollArea className="flex-1">
+        <div className="px-6 py-4">
+          {tab === "sync" && <SyncManage />}
+          {tab === "data" && (
+            <Collection
+              doubanBound={doubanBound}
+              wereadBound={wereadBound}
+              flomoBound={flomoBound}
+              dataCounts={dataCounts}
+            />
+          )}
+        </div>
+      </ScrollArea>
     </div>
   );
 }

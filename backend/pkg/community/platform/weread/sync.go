@@ -320,6 +320,15 @@ func syncReviews(ctx context.Context, client *SkillAPIClient, shelf *ShelfRespon
 		return nil, err
 	}
 
+	// Supplement title map from notebooks (covers books not on shelf).
+	for _, nb := range notebooks {
+		if nb.Book != nil && nb.Book.Title != "" {
+			if _, exists := titleMap[nb.BookID]; !exists {
+				titleMap[nb.BookID] = nb.Book.Title
+			}
+		}
+	}
+
 	// Filter books that have reviews.
 	var bookIDs []string
 	for _, nb := range notebooks {
@@ -368,11 +377,15 @@ func syncReviews(ctx context.Context, client *SkillAPIClient, shelf *ShelfRespon
 					chapterName = fmt.Sprintf("Chapter %d", detail.ChapterIdx)
 				}
 				batch = append(batch, map[string]any{
-					"title":    fmt.Sprintf("%s - %s", bookTitle, chapterName),
-					"url":      fmt.Sprintf("weread://review/%s", r.ReviewID),
-					"date":     fmt.Sprintf("%d", detail.CreateTime),
-					"location": chapterName,
-					"body":     detail.Content,
+					"title":        fmt.Sprintf("%s - %s", bookTitle, chapterName),
+					"url":          fmt.Sprintf("weread://review/%s", r.ReviewID),
+					"date":         fmt.Sprintf("%d", detail.CreateTime),
+					"location":     chapterName,
+					"body":         detail.Content,
+					"book_id":      bookID,
+					"chapter_name": chapterName,
+					"abstract":     detail.Abstract,
+					"review_id":    r.ReviewID,
 				})
 			}
 

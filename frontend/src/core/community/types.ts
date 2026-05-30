@@ -12,6 +12,7 @@ export interface BindStatus {
   bound: boolean;
   user_id?: string;
   profile?: PlatformProfile;
+  data_counts?: Record<string, number>;
 }
 
 export interface PollResult {
@@ -66,6 +67,10 @@ export interface NoteItem {
   date: string | null;
   location: string | null;
   body: string | null;
+  book_id?: string;
+  chapter_name?: string;
+  abstract?: string;
+  review_id?: string;
 }
 
 export interface BookmarkItem {
@@ -89,15 +94,6 @@ export interface MemoItem {
   updated_at: string;
 }
 
-export interface CommunityData {
-  books: BookItem[];
-  movies: MovieItem[];
-  notes: NoteItem[];
-  bookmarks?: BookmarkItem[];
-  memos?: MemoItem[];
-}
-
-export type AllCommunityData = Record<string, CommunityData>;
 export type AllBindings = Record<string, BindStatus>;
 
 // ---- Pagination types ----

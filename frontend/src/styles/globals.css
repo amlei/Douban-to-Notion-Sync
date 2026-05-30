@@ -297,3 +297,13 @@
     @apply font-sans;
   }
 }
+
+/* ScrollArea: always show scrollbar with subtle appearance */
+[data-slot="scroll-area-scrollbar"] {
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+[data-slot="scroll-area-scrollbar"]:hover,
+[data-slot="scroll-area-scrollbar"][data-state="visible"] {
+  opacity: 1;
+}

@@ -201,6 +201,10 @@ var (
 		{Name: "date", Type: field.TypeString, Nullable: true},
 		{Name: "location", Type: field.TypeString, Nullable: true},
 		{Name: "body", Type: field.TypeString, Nullable: true},
+		{Name: "book_id", Type: field.TypeString, Nullable: true},
+		{Name: "chapter_name", Type: field.TypeString, Nullable: true},
+		{Name: "abstract", Type: field.TypeString, Nullable: true},
+		{Name: "review_id", Type: field.TypeString, Nullable: true},
 		{Name: "scraped_at", Type: field.TypeTime},
 	}
 	// NotesTable holds the schema information for the "notes" table.
@@ -213,6 +217,11 @@ var (
 				Name:    "note_user_id_url",
 				Unique:  true,
 				Columns: []*schema.Column{NotesColumns[1], NotesColumns[3]},
+			},
+			{
+				Name:    "note_user_id_book_id",
+				Unique:  false,
+				Columns: []*schema.Column{NotesColumns[1], NotesColumns[7]},
 			},
 		},
 	}

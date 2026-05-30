@@ -88,6 +88,62 @@ func (_c *NoteCreate) SetNillableBody(v *string) *NoteCreate {
 	return _c
 }
 
+// SetBookID sets the "book_id" field.
+func (_c *NoteCreate) SetBookID(v string) *NoteCreate {
+	_c.mutation.SetBookID(v)
+	return _c
+}
+
+// SetNillableBookID sets the "book_id" field if the given value is not nil.
+func (_c *NoteCreate) SetNillableBookID(v *string) *NoteCreate {
+	if v != nil {
+		_c.SetBookID(*v)
+	}
+	return _c
+}
+
+// SetChapterName sets the "chapter_name" field.
+func (_c *NoteCreate) SetChapterName(v string) *NoteCreate {
+	_c.mutation.SetChapterName(v)
+	return _c
+}
+
+// SetNillableChapterName sets the "chapter_name" field if the given value is not nil.
+func (_c *NoteCreate) SetNillableChapterName(v *string) *NoteCreate {
+	if v != nil {
+		_c.SetChapterName(*v)
+	}
+	return _c
+}
+
+// SetAbstract sets the "abstract" field.
+func (_c *NoteCreate) SetAbstract(v string) *NoteCreate {
+	_c.mutation.SetAbstract(v)
+	return _c
+}
+
+// SetNillableAbstract sets the "abstract" field if the given value is not nil.
+func (_c *NoteCreate) SetNillableAbstract(v *string) *NoteCreate {
+	if v != nil {
+		_c.SetAbstract(*v)
+	}
+	return _c
+}
+
+// SetReviewID sets the "review_id" field.
+func (_c *NoteCreate) SetReviewID(v string) *NoteCreate {
+	_c.mutation.SetReviewID(v)
+	return _c
+}
+
+// SetNillableReviewID sets the "review_id" field if the given value is not nil.
+func (_c *NoteCreate) SetNillableReviewID(v *string) *NoteCreate {
+	if v != nil {
+		_c.SetReviewID(*v)
+	}
+	return _c
+}
+
 // SetScrapedAt sets the "scraped_at" field.
 func (_c *NoteCreate) SetScrapedAt(v time.Time) *NoteCreate {
 	_c.mutation.SetScrapedAt(v)
@@ -203,6 +259,22 @@ func (_c *NoteCreate) createSpec() (*Note, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Body(); ok {
 		_spec.SetField(note.FieldBody, field.TypeString, value)
 		_node.Body = &value
+	}
+	if value, ok := _c.mutation.BookID(); ok {
+		_spec.SetField(note.FieldBookID, field.TypeString, value)
+		_node.BookID = &value
+	}
+	if value, ok := _c.mutation.ChapterName(); ok {
+		_spec.SetField(note.FieldChapterName, field.TypeString, value)
+		_node.ChapterName = &value
+	}
+	if value, ok := _c.mutation.Abstract(); ok {
+		_spec.SetField(note.FieldAbstract, field.TypeString, value)
+		_node.Abstract = &value
+	}
+	if value, ok := _c.mutation.ReviewID(); ok {
+		_spec.SetField(note.FieldReviewID, field.TypeString, value)
+		_node.ReviewID = &value
 	}
 	if value, ok := _c.mutation.ScrapedAt(); ok {
 		_spec.SetField(note.FieldScrapedAt, field.TypeTime, value)

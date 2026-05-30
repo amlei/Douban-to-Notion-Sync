@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { cn } from "@/lib/utils";
 import { GeneralSettings } from "@/components/workspace/settings/general-settings";
@@ -70,13 +71,15 @@ export function SettingsDialog({
                 {tabs.find((t) => t.key === tab)?.label}
               </h2>
             </div>
-            <div className="flex-1 overflow-y-auto px-6 pb-6">
+            <ScrollArea className="flex-1">
+              <div className="px-6 pb-6">
               {tab === "general" && <GeneralSettings />}
               {tab === "account" && (
                 <AccountManage onLogoutSuccess={() => onOpenChange(false)} />
               )}
               {tab === "terms" && <ServiceAgreement />}
-            </div>
+              </div>
+            </ScrollArea>
           </div>
         </div>
       </DialogContent>

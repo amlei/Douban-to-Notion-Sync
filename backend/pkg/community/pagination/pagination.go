@@ -14,7 +14,7 @@ func (r *PaginationRequest) Defaults() {
 	if r.Page < 1 {
 		r.Page = 1
 	}
-	if r.PageSize < 1 || r.PageSize > 50 {
+	if r.PageSize < 1 || r.PageSize > 200 {
 		r.PageSize = 20
 	}
 	if r.SortOrder != "asc" {
@@ -26,6 +26,11 @@ func (r *PaginationRequest) Defaults() {
 type BookFilter struct {
 	PlatformID *int   `form:"platform_id"` // 1=douban, 2=weread
 	Status     string `form:"status"`      // done, reading, unread
+}
+
+// BookmarkNoteFilter holds filter parameters for bookmarks and notes.
+type BookmarkNoteFilter struct {
+	BookID string `form:"book_id"`
 }
 
 // PaginatedResponse is the generic envelope for paginated results.

@@ -132,40 +132,32 @@ func (h *CommunityHandler) data(c *gin.Context) {
 		return
 	}
 
-	// Paginated mode: type parameter present
 	dataType := c.Query("type")
-	if dataType != "" {
-		var req pagination.PaginationRequest
-		if err := c.ShouldBindQuery(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		req.Defaults()
-
-		var bookFilter pagination.BookFilter
-		if dataType == "books" {
-			c.ShouldBindQuery(&bookFilter)
-		}
-
-		result, err := h.svc.GetPaginatedData(c.Request.Context(), user.ID, dataType, req, bookFilter)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, result)
+	if dataType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required parameter: type"})
 		return
 	}
 
-	// Legacy mode: return all data at once
-	platform := c.DefaultQuery("platform", "all")
-	if platform != "all" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Use platform=all to fetch all platform data"})
+	var req pagination.PaginationRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	req.Defaults()
 
-	result, err := h.svc.GetCommunityData(c.Request.Context(), user.ID)
+	var bookFilter pagination.BookFilter
+	if dataType == "books" {
+		c.ShouldBindQuery(&bookFilter)
+	}
+
+	var bnFilter pagination.BookmarkNoteFilter
+	if dataType == "bookmarks" || dataType == "notes" {
+		c.ShouldBindQuery(&bnFilter)
+	}
+
+	result, err := h.svc.GetPaginatedData(c.Request.Context(), user.ID, dataType, req, bookFilter, bnFilter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, result)

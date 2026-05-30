@@ -324,9 +324,38 @@ func (s *CommunityService) Status(ctx context.Context, userID int64, platform st
 	if err == nil && row != nil && row.Bound == 1 {
 		result := conv.CommunityMetaToAPIDict(row)
 		result["status"] = "bound"
+		result["data_counts"] = s.getDataCounts(ctx, userID, platform)
 		return result, nil
 	}
 	return map[string]any{"status": "idle"}, nil
+}
+
+func (s *CommunityService) getDataCounts(ctx context.Context, userID int64, platform string) map[string]int64 {
+	counts := make(map[string]int64)
+	switch platform {
+	case "douban":
+		if n, err := s.dataRepo.CountBooks(ctx, userID, 1); err == nil {
+			counts["books"] = int64(n)
+		}
+		if n, err := s.doubanRepo.CountMovies(ctx, userID); err == nil {
+			counts["movies"] = int64(n)
+		}
+	case "weread":
+		if n, err := s.dataRepo.CountBooks(ctx, userID, 2); err == nil {
+			counts["books"] = int64(n)
+		}
+		if n, err := s.wereadRepo.CountNotes(ctx, userID); err == nil {
+			counts["notes"] = int64(n)
+		}
+		if n, err := s.wereadRepo.CountBookmarks(ctx, userID); err == nil {
+			counts["bookmarks"] = int64(n)
+		}
+	case "flomo":
+		if n, err := s.flomoRepo.CountMemos(ctx, userID); err == nil {
+			counts["memos"] = int64(n)
+		}
+	}
+	return counts
 }
 
 func (s *CommunityService) StatusAll(ctx context.Context, userID int64) (map[string]map[string]any, error) {
@@ -753,6 +782,7 @@ func (s *CommunityService) GetPaginatedData(
 	dataType string,
 	req pagination.PaginationRequest,
 	bookFilter pagination.BookFilter,
+	bnFilter pagination.BookmarkNoteFilter,
 ) (*pagination.PaginatedResponse, error) {
 	switch dataType {
 	case "books":
@@ -760,9 +790,9 @@ func (s *CommunityService) GetPaginatedData(
 	case "movies":
 		return s.doubanRepo.GetPaginatedMovies(ctx, userID, req)
 	case "notes":
-		return s.wereadRepo.GetPaginatedNotes(ctx, userID, req)
+		return s.wereadRepo.GetPaginatedNotes(ctx, userID, req, bnFilter)
 	case "bookmarks":
-		return s.wereadRepo.GetPaginatedBookmarks(ctx, userID, req)
+		return s.wereadRepo.GetPaginatedBookmarks(ctx, userID, req, bnFilter)
 	case "memos":
 		return s.flomoRepo.GetPaginatedMemos(ctx, userID, req)
 	default:

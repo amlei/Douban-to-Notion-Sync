@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Loader2, Plus } from "lucide-react";
 import { usePlatformBinding } from "@/core/community/use-platform-binding";
-import { getAllCommunityData, checkAllBindings } from "@/core/community/api";
-import type { BookItem, MovieItem, NoteItem, BookmarkItem, MemoItem } from "@/core/community/types";
+import { checkAllBindings } from "@/core/community/api";
 import { PlatformCard } from "@/components/workspace/data/platform-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,75 +21,62 @@ const platforms = [
   { id: "weread", label: "微信读书", icon: "/weread.webp", rounded: true },
 ] as const;
 
+function extractCounts(bindings: Record<string, { data_counts?: Record<string, number> }>) {
+  const c = (pf: string, key: string) => bindings[pf]?.data_counts?.[key] ?? 0;
+  return {
+    doubanBooks: c("douban", "books"),
+    movies: c("douban", "movies"),
+    notes: c("douban", "notes"),
+    wereadBooks: c("weread", "books"),
+    bookmarks: c("weread", "bookmarks"),
+    memos: c("flomo", "memos"),
+  };
+}
+
 export function useCommunityDataState() {
   const wsRef = useRef<WebSocket | null>(null);
   const [qrSrc, setQrSrc] = useState<string | null>(null);
   const [bindError, setBindError] = useState<string | null>(null);
+  const [counts, setCounts] = useState(() => extractCounts({}));
 
-  const [books, setBooks] = useState<BookItem[]>([]);
-  const [movies, setMovies] = useState<MovieItem[]>([]);
-  const [notes, setNotes] = useState<NoteItem[]>([]);
-  const [wereadBooks, setWereadBooks] = useState<BookItem[]>([]);
-  const [wereadBookmarks, setWereadBookmarks] = useState<BookmarkItem[]>([]);
-  const [flomoMemos, setFlomoMemos] = useState<MemoItem[]>([]);
-
-  const refreshCommunityData = useCallback(async () => {
-    const all = await getAllCommunityData();
-    for (const [pf, d] of Object.entries(all)) {
-      if (pf === "douban") {
-        setBooks(d.books ?? []);
-        setMovies(d.movies ?? []);
-        setNotes(d.notes ?? []);
-      } else if (pf === "flomo") {
-        setFlomoMemos(d.memos ?? []);
-      } else {
-        setWereadBooks(d.books ?? []);
-        setWereadBookmarks(d.bookmarks ?? []);
-      }
-    }
+  const refreshCounts = useCallback(async () => {
+    try {
+      const bindings = await checkAllBindings();
+      setCounts(extractCounts(bindings));
+    } catch { /* ignore */ }
   }, []);
 
   const doubanBinding = usePlatformBinding("douban", wsRef, {
     onQr: setQrSrc,
     onError: setBindError,
-    onBindComplete: refreshCommunityData,
+    onBindComplete: refreshCounts,
   });
 
   const wereadBinding = usePlatformBinding("weread", wsRef, {
     onQr: setQrSrc,
     onError: setBindError,
-    onBindComplete: refreshCommunityData,
-    onUnbind: () => { setWereadBooks([]); setWereadBookmarks([]); },
+    onBindComplete: refreshCounts,
+    onUnbind: () => { setCounts((c) => ({ ...c, wereadBooks: 0, bookmarks: 0 })); },
   });
 
   const flomoBinding = usePlatformBinding("flomo", wsRef, {
     onQr: setQrSrc,
     onError: setBindError,
-    onBindComplete: refreshCommunityData,
-    onUnbind: () => { setFlomoMemos([]); },
+    onBindComplete: refreshCounts,
+    onUnbind: () => { setCounts((c) => ({ ...c, memos: 0 })); },
   });
 
   useEffect(() => {
     (async () => {
       try {
-        const [bindings, allData] = await Promise.all([checkAllBindings(), getAllCommunityData()]);
+        const bindings = await checkAllBindings();
+        setCounts(extractCounts(bindings));
         for (const pf of ["douban", "weread", "flomo"] as const) {
           const status = bindings[pf];
-          const data = allData[pf];
-          if (!status || !data) continue;
-          if (pf === "douban") {
-            doubanBinding.initFromApi(status);
-            setBooks(data.books ?? []);
-            setMovies(data.movies ?? []);
-            setNotes(data.notes ?? []);
-          } else if (pf === "weread") {
-            wereadBinding.initFromApi(status);
-            setWereadBooks(data.books ?? []);
-            setWereadBookmarks(data.bookmarks ?? []);
-          } else {
-            flomoBinding.initFromApi(status);
-            setFlomoMemos(data.memos ?? []);
-          }
+          if (!status) continue;
+          if (pf === "douban") doubanBinding.initFromApi(status);
+          else if (pf === "weread") wereadBinding.initFromApi(status);
+          else flomoBinding.initFromApi(status);
         }
       } catch { /* ignore */ }
     })();
@@ -101,7 +87,7 @@ export function useCommunityDataState() {
   }, []);
 
   return {
-    books, wereadBooks, movies, notes, wereadBookmarks, flomoMemos,
+    counts,
     qrSrc, bindError,
     doubanBound: doubanBinding.bound,
     wereadBound: wereadBinding.bound,
@@ -115,7 +101,7 @@ export function SyncManage() {
   const [wereadApiKey, setWereadApiKey] = useState("");
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
   const {
-    books, wereadBooks, movies, notes, wereadBookmarks, flomoMemos,
+    counts,
     qrSrc, bindError,
     doubanBinding, wereadBinding, flomoBinding,
   } = useCommunityDataState();
@@ -135,9 +121,9 @@ export function SyncManage() {
   }, [wereadBinding.bound]);
 
   const dataCountsMap: Record<string, Record<string, number>> = {
-    douban: { "本图书": books.length, "部电影": movies.length, "篇日记": notes.length },
-    weread: { "本图书": wereadBooks.length, "条笔记": wereadBookmarks.length },
-    flomo: { "条备忘录": flomoMemos.length },
+    douban: { "本图书": counts.doubanBooks, "部电影": counts.movies, "篇日记": counts.notes },
+    weread: { "本图书": counts.wereadBooks, "条笔记": counts.bookmarks },
+    flomo: { "条备忘录": counts.memos },
   };
 
   const boundPlatforms = platforms.filter((p) => bindingMap[p.id].bound);

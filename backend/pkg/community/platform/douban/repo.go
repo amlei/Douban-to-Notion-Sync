@@ -116,6 +116,11 @@ func (r *DoubanRepo) GetReviews(ctx context.Context, userID int64) ([]*ent.Revie
 		All(ctx)
 }
 
+// CountMovies returns the total number of movies for a user.
+func (r *DoubanRepo) CountMovies(ctx context.Context, userID int64) (int, error) {
+	return r.client.Movie.Query().Where(movie.UserIDEQ(userID)).Count(ctx)
+}
+
 // GetPaginatedMovies returns a paginated, filtered, sorted list of movies.
 func (r *DoubanRepo) GetPaginatedMovies(
 	ctx context.Context,

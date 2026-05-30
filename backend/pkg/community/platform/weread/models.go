@@ -22,13 +22,26 @@ func BookmarkToAPIDict(b *ent.Bookmark) map[string]any {
 }
 
 func NoteToAPIDict(n *ent.Note) map[string]any {
-	return map[string]any{
+	d := map[string]any{
 		"title":    n.Title,
 		"url":      n.URL,
 		"date":     n.Date,
 		"location": n.Location,
 		"body":     n.Body,
 	}
+	if n.BookID != nil {
+		d["book_id"] = *n.BookID
+	}
+	if n.ChapterName != nil {
+		d["chapter_name"] = *n.ChapterName
+	}
+	if n.Abstract != nil {
+		d["abstract"] = *n.Abstract
+	}
+	if n.ReviewID != nil {
+		d["review_id"] = *n.ReviewID
+	}
+	return d
 }
 
 func getStr(m map[string]any, key string) *string {

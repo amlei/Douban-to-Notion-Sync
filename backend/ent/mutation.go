@@ -7279,6 +7279,10 @@ type NoteMutation struct {
 	date          *string
 	location      *string
 	body          *string
+	book_id       *string
+	chapter_name  *string
+	abstract      *string
+	review_id     *string
 	scraped_at    *time.Time
 	clearedFields map[string]struct{}
 	done          bool
@@ -7678,6 +7682,202 @@ func (m *NoteMutation) ResetBody() {
 	delete(m.clearedFields, note.FieldBody)
 }
 
+// SetBookID sets the "book_id" field.
+func (m *NoteMutation) SetBookID(s string) {
+	m.book_id = &s
+}
+
+// BookID returns the value of the "book_id" field in the mutation.
+func (m *NoteMutation) BookID() (r string, exists bool) {
+	v := m.book_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBookID returns the old "book_id" field's value of the Note entity.
+// If the Note object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NoteMutation) OldBookID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBookID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBookID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBookID: %w", err)
+	}
+	return oldValue.BookID, nil
+}
+
+// ClearBookID clears the value of the "book_id" field.
+func (m *NoteMutation) ClearBookID() {
+	m.book_id = nil
+	m.clearedFields[note.FieldBookID] = struct{}{}
+}
+
+// BookIDCleared returns if the "book_id" field was cleared in this mutation.
+func (m *NoteMutation) BookIDCleared() bool {
+	_, ok := m.clearedFields[note.FieldBookID]
+	return ok
+}
+
+// ResetBookID resets all changes to the "book_id" field.
+func (m *NoteMutation) ResetBookID() {
+	m.book_id = nil
+	delete(m.clearedFields, note.FieldBookID)
+}
+
+// SetChapterName sets the "chapter_name" field.
+func (m *NoteMutation) SetChapterName(s string) {
+	m.chapter_name = &s
+}
+
+// ChapterName returns the value of the "chapter_name" field in the mutation.
+func (m *NoteMutation) ChapterName() (r string, exists bool) {
+	v := m.chapter_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChapterName returns the old "chapter_name" field's value of the Note entity.
+// If the Note object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NoteMutation) OldChapterName(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChapterName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChapterName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChapterName: %w", err)
+	}
+	return oldValue.ChapterName, nil
+}
+
+// ClearChapterName clears the value of the "chapter_name" field.
+func (m *NoteMutation) ClearChapterName() {
+	m.chapter_name = nil
+	m.clearedFields[note.FieldChapterName] = struct{}{}
+}
+
+// ChapterNameCleared returns if the "chapter_name" field was cleared in this mutation.
+func (m *NoteMutation) ChapterNameCleared() bool {
+	_, ok := m.clearedFields[note.FieldChapterName]
+	return ok
+}
+
+// ResetChapterName resets all changes to the "chapter_name" field.
+func (m *NoteMutation) ResetChapterName() {
+	m.chapter_name = nil
+	delete(m.clearedFields, note.FieldChapterName)
+}
+
+// SetAbstract sets the "abstract" field.
+func (m *NoteMutation) SetAbstract(s string) {
+	m.abstract = &s
+}
+
+// Abstract returns the value of the "abstract" field in the mutation.
+func (m *NoteMutation) Abstract() (r string, exists bool) {
+	v := m.abstract
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAbstract returns the old "abstract" field's value of the Note entity.
+// If the Note object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NoteMutation) OldAbstract(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAbstract is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAbstract requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAbstract: %w", err)
+	}
+	return oldValue.Abstract, nil
+}
+
+// ClearAbstract clears the value of the "abstract" field.
+func (m *NoteMutation) ClearAbstract() {
+	m.abstract = nil
+	m.clearedFields[note.FieldAbstract] = struct{}{}
+}
+
+// AbstractCleared returns if the "abstract" field was cleared in this mutation.
+func (m *NoteMutation) AbstractCleared() bool {
+	_, ok := m.clearedFields[note.FieldAbstract]
+	return ok
+}
+
+// ResetAbstract resets all changes to the "abstract" field.
+func (m *NoteMutation) ResetAbstract() {
+	m.abstract = nil
+	delete(m.clearedFields, note.FieldAbstract)
+}
+
+// SetReviewID sets the "review_id" field.
+func (m *NoteMutation) SetReviewID(s string) {
+	m.review_id = &s
+}
+
+// ReviewID returns the value of the "review_id" field in the mutation.
+func (m *NoteMutation) ReviewID() (r string, exists bool) {
+	v := m.review_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReviewID returns the old "review_id" field's value of the Note entity.
+// If the Note object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NoteMutation) OldReviewID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReviewID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReviewID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReviewID: %w", err)
+	}
+	return oldValue.ReviewID, nil
+}
+
+// ClearReviewID clears the value of the "review_id" field.
+func (m *NoteMutation) ClearReviewID() {
+	m.review_id = nil
+	m.clearedFields[note.FieldReviewID] = struct{}{}
+}
+
+// ReviewIDCleared returns if the "review_id" field was cleared in this mutation.
+func (m *NoteMutation) ReviewIDCleared() bool {
+	_, ok := m.clearedFields[note.FieldReviewID]
+	return ok
+}
+
+// ResetReviewID resets all changes to the "review_id" field.
+func (m *NoteMutation) ResetReviewID() {
+	m.review_id = nil
+	delete(m.clearedFields, note.FieldReviewID)
+}
+
 // SetScrapedAt sets the "scraped_at" field.
 func (m *NoteMutation) SetScrapedAt(t time.Time) {
 	m.scraped_at = &t
@@ -7748,7 +7948,7 @@ func (m *NoteMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NoteMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 11)
 	if m.user_id != nil {
 		fields = append(fields, note.FieldUserID)
 	}
@@ -7766,6 +7966,18 @@ func (m *NoteMutation) Fields() []string {
 	}
 	if m.body != nil {
 		fields = append(fields, note.FieldBody)
+	}
+	if m.book_id != nil {
+		fields = append(fields, note.FieldBookID)
+	}
+	if m.chapter_name != nil {
+		fields = append(fields, note.FieldChapterName)
+	}
+	if m.abstract != nil {
+		fields = append(fields, note.FieldAbstract)
+	}
+	if m.review_id != nil {
+		fields = append(fields, note.FieldReviewID)
 	}
 	if m.scraped_at != nil {
 		fields = append(fields, note.FieldScrapedAt)
@@ -7790,6 +8002,14 @@ func (m *NoteMutation) Field(name string) (ent.Value, bool) {
 		return m.Location()
 	case note.FieldBody:
 		return m.Body()
+	case note.FieldBookID:
+		return m.BookID()
+	case note.FieldChapterName:
+		return m.ChapterName()
+	case note.FieldAbstract:
+		return m.Abstract()
+	case note.FieldReviewID:
+		return m.ReviewID()
 	case note.FieldScrapedAt:
 		return m.ScrapedAt()
 	}
@@ -7813,6 +8033,14 @@ func (m *NoteMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldLocation(ctx)
 	case note.FieldBody:
 		return m.OldBody(ctx)
+	case note.FieldBookID:
+		return m.OldBookID(ctx)
+	case note.FieldChapterName:
+		return m.OldChapterName(ctx)
+	case note.FieldAbstract:
+		return m.OldAbstract(ctx)
+	case note.FieldReviewID:
+		return m.OldReviewID(ctx)
 	case note.FieldScrapedAt:
 		return m.OldScrapedAt(ctx)
 	}
@@ -7865,6 +8093,34 @@ func (m *NoteMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetBody(v)
+		return nil
+	case note.FieldBookID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBookID(v)
+		return nil
+	case note.FieldChapterName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChapterName(v)
+		return nil
+	case note.FieldAbstract:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAbstract(v)
+		return nil
+	case note.FieldReviewID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReviewID(v)
 		return nil
 	case note.FieldScrapedAt:
 		v, ok := value.(time.Time)
@@ -7930,6 +8186,18 @@ func (m *NoteMutation) ClearedFields() []string {
 	if m.FieldCleared(note.FieldBody) {
 		fields = append(fields, note.FieldBody)
 	}
+	if m.FieldCleared(note.FieldBookID) {
+		fields = append(fields, note.FieldBookID)
+	}
+	if m.FieldCleared(note.FieldChapterName) {
+		fields = append(fields, note.FieldChapterName)
+	}
+	if m.FieldCleared(note.FieldAbstract) {
+		fields = append(fields, note.FieldAbstract)
+	}
+	if m.FieldCleared(note.FieldReviewID) {
+		fields = append(fields, note.FieldReviewID)
+	}
 	return fields
 }
 
@@ -7956,6 +8224,18 @@ func (m *NoteMutation) ClearField(name string) error {
 	case note.FieldBody:
 		m.ClearBody()
 		return nil
+	case note.FieldBookID:
+		m.ClearBookID()
+		return nil
+	case note.FieldChapterName:
+		m.ClearChapterName()
+		return nil
+	case note.FieldAbstract:
+		m.ClearAbstract()
+		return nil
+	case note.FieldReviewID:
+		m.ClearReviewID()
+		return nil
 	}
 	return fmt.Errorf("unknown Note nullable field %s", name)
 }
@@ -7981,6 +8261,18 @@ func (m *NoteMutation) ResetField(name string) error {
 		return nil
 	case note.FieldBody:
 		m.ResetBody()
+		return nil
+	case note.FieldBookID:
+		m.ResetBookID()
+		return nil
+	case note.FieldChapterName:
+		m.ResetChapterName()
+		return nil
+	case note.FieldAbstract:
+		m.ResetAbstract()
+		return nil
+	case note.FieldReviewID:
+		m.ResetReviewID()
 		return nil
 	case note.FieldScrapedAt:
 		m.ResetScrapedAt()

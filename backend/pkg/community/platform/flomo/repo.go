@@ -77,6 +77,11 @@ func (r *FlomoRepo) GetFlomoMemos(ctx context.Context, userID int64) ([]*ent.Flo
 		All(ctx)
 }
 
+// CountMemos returns the total number of memos for a user.
+func (r *FlomoRepo) CountMemos(ctx context.Context, userID int64) (int, error) {
+	return r.client.FlomoMemo.Query().Where(flomomemo.UserIDEQ(userID)).Count(ctx)
+}
+
 // GetPaginatedMemos returns a paginated, filtered, sorted list of memos.
 func (r *FlomoRepo) GetPaginatedMemos(
 	ctx context.Context,

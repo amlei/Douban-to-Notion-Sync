@@ -509,6 +509,13 @@ func (s *CommunityService) runSync(userID int64, platform, communityUserID, sess
 		return
 	}
 
+	// Douban sync: always route to Go (Python scraper no longer handles douban sync).
+	if platform == "douban" {
+		log.Printf("[douban-go] runSync: routing to Go scraping path")
+		s.runSyncDoubanGo(ctx, userID, communityUserID, sessionState, t)
+		return
+	}
+
 	ssPreview := sessionState
 	if len(ssPreview) > 80 {
 		ssPreview = ssPreview[:80]
@@ -669,6 +676,34 @@ func (s *CommunityService) Refresh(ctx context.Context, userID int64, platform s
 			"bound":    true,
 			"platform": platform,
 			"user_id":  *communityUserID,
+			"profile":  profile,
+		}, nil
+	}
+
+	// Douban refresh: always route to Go (Python scraper no longer handles douban refresh).
+	if platform == "douban" {
+		client, err := douban.NewDoubanClient(sessionState)
+		if err != nil {
+			return nil, fmt.Errorf("豆瓣 session 无效: %w", err)
+		}
+		profile, err := douban.FetchProfile(ctx, client)
+		if err != nil {
+			return nil, fmt.Errorf("获取豆瓣资料失败: %w", err)
+		}
+		communityUserID := row.CommunityUserID
+		if communityUserID == nil {
+			uid, _ := client.ExtractUserID(ctx)
+			if uid != "" {
+				communityUserID = &uid
+			}
+		}
+		if communityUserID != nil {
+			s.metaRepo.SaveBinding(ctx, userID, platformID, *communityUserID, profile)
+		}
+		return map[string]any{
+			"bound":    true,
+			"platform": platform,
+			"user_id":  derefString(communityUserID),
 			"profile":  profile,
 		}, nil
 	}
@@ -901,7 +936,7 @@ func (s *CommunityService) runBindWereadAPI(ctx context.Context, userID int64, a
 	}
 
 	log.Printf("[weread-api] starting SyncWithAPI (background)…")
-	result, err := weread.SyncWithAPI(ctx, client, s.dataRepo, s.wereadRepo, s.wereadRepo, userID, onProgress)
+	result, err := weread.SyncWithAPI(ctx, client, s.dataRepo, s.wereadRepo, s.wereadRepo, s.dataRepo, userID, onProgress)
 	if err != nil {
 		log.Printf("[weread-api] sync failed: %v", err)
 		return
@@ -914,6 +949,78 @@ func (s *CommunityService) runBindWereadAPI(ctx context.Context, userID int64, a
 		"notes":     int64(result.Notes),
 	}
 	t.Notify()
+}
+
+// ---------------------------------------------------------------------------
+// Douban Go direct scraping paths
+// ---------------------------------------------------------------------------
+
+// derefString safely dereferences a string pointer, returning "" for nil.
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// runSyncDoubanGo performs Douban sync entirely in Go, bypassing Python scraper.
+func (s *CommunityService) runSyncDoubanGo(
+	ctx context.Context,
+	userID int64,
+	communityUserID string,
+	sessionState string,
+	t *BindTask,
+) {
+	client, err := douban.NewDoubanClient(sessionState)
+	if err != nil {
+		t.Status = "failed"
+		t.Data.Error = fmt.Sprintf("Session invalid: %v", err)
+		t.Notify()
+		return
+	}
+	client.SetUserID(communityUserID)
+
+	// Build existing URL sets for incremental sync.
+	existingBookURLs := map[string]bool{}
+	existingMovieURLs := map[string]bool{}
+	books, _ := s.dataRepo.GetBooks(ctx, userID)
+	for _, b := range books {
+		existingBookURLs[b.URL] = true
+	}
+	movies, _ := s.doubanRepo.GetMovies(ctx, userID)
+	for _, m := range movies {
+		existingMovieURLs[m.URL] = true
+	}
+
+	onProgress := func(phase string, current, total int) {
+		t.Status = "scraping"
+		t.Data.ScrapePhase = phase
+		t.Notify()
+	}
+
+	result, err := douban.SyncWithCookies(
+		ctx, client,
+		s.dataRepo, s.doubanRepo, s.doubanRepo, s.doubanRepo, s.wereadRepo,
+		userID, existingBookURLs, existingMovieURLs, onProgress,
+	)
+	if err != nil {
+		t.Status = "failed"
+		t.Data.Error = err.Error()
+		t.Notify()
+		return
+	}
+
+	t.Status = "bound"
+	t.Data.ScrapeCounts = map[string]int64{
+		"books":   int64(result.Books),
+		"movies":  int64(result.Movies),
+		"games":   int64(result.Games),
+		"reviews": int64(result.Reviews),
+		"notes":   int64(result.Notes),
+	}
+	t.Notify()
+	log.Printf("[douban-go] sync done: books=%d, movies=%d, games=%d, reviews=%d, notes=%d",
+		result.Books, result.Movies, result.Games, result.Reviews, result.Notes)
 }
 
 func (s *CommunityService) runSyncWereadAPI(ctx context.Context, userID int64, sessionState string, t *BindTask) {
@@ -933,7 +1040,7 @@ func (s *CommunityService) runSyncWereadAPI(ctx context.Context, userID int64, s
 	}
 
 	log.Printf("[weread-api] starting SyncWithAPI…")
-	result, err := weread.SyncWithAPI(ctx, client, s.dataRepo, s.wereadRepo, s.wereadRepo, userID, onProgress)
+	result, err := weread.SyncWithAPI(ctx, client, s.dataRepo, s.wereadRepo, s.wereadRepo, s.dataRepo, userID, onProgress)
 	if err != nil {
 		t.Status = "failed"
 		t.Data.Error = err.Error()

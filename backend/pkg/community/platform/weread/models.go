@@ -29,17 +29,14 @@ func NoteToAPIDict(n *ent.Note) map[string]any {
 		"location": n.Location,
 		"body":     n.Body,
 	}
+	if n.PlatformID != nil {
+		d["platform_id"] = *n.PlatformID
+	}
 	if n.BookID != nil {
 		d["book_id"] = *n.BookID
 	}
-	if n.ChapterName != nil {
-		d["chapter_name"] = *n.ChapterName
-	}
 	if n.Abstract != nil {
 		d["abstract"] = *n.Abstract
-	}
-	if n.ReviewID != nil {
-		d["review_id"] = *n.ReviewID
 	}
 	return d
 }

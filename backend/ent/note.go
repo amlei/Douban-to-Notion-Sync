@@ -19,6 +19,8 @@ type Note struct {
 	ID int64 `json:"id,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID int64 `json:"user_id,omitempty"`
+	// PlatformID holds the value of the "platform_id" field.
+	PlatformID *int `json:"platform_id,omitempty"`
 	// Title holds the value of the "title" field.
 	Title string `json:"title,omitempty"`
 	// URL holds the value of the "url" field.
@@ -31,12 +33,8 @@ type Note struct {
 	Body *string `json:"body,omitempty"`
 	// BookID holds the value of the "book_id" field.
 	BookID *string `json:"book_id,omitempty"`
-	// ChapterName holds the value of the "chapter_name" field.
-	ChapterName *string `json:"chapter_name,omitempty"`
 	// Abstract holds the value of the "abstract" field.
 	Abstract *string `json:"abstract,omitempty"`
-	// ReviewID holds the value of the "review_id" field.
-	ReviewID *string `json:"review_id,omitempty"`
 	// ScrapedAt holds the value of the "scraped_at" field.
 	ScrapedAt    time.Time `json:"scraped_at,omitempty"`
 	selectValues sql.SelectValues
@@ -47,9 +45,9 @@ func (*Note) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case note.FieldID, note.FieldUserID:
+		case note.FieldID, note.FieldUserID, note.FieldPlatformID:
 			values[i] = new(sql.NullInt64)
-		case note.FieldTitle, note.FieldURL, note.FieldDate, note.FieldLocation, note.FieldBody, note.FieldBookID, note.FieldChapterName, note.FieldAbstract, note.FieldReviewID:
+		case note.FieldTitle, note.FieldURL, note.FieldDate, note.FieldLocation, note.FieldBody, note.FieldBookID, note.FieldAbstract:
 			values[i] = new(sql.NullString)
 		case note.FieldScrapedAt:
 			values[i] = new(sql.NullTime)
@@ -79,6 +77,13 @@ func (_m *Note) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field user_id", values[i])
 			} else if value.Valid {
 				_m.UserID = value.Int64
+			}
+		case note.FieldPlatformID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field platform_id", values[i])
+			} else if value.Valid {
+				_m.PlatformID = new(int)
+				*_m.PlatformID = int(value.Int64)
 			}
 		case note.FieldTitle:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -121,26 +126,12 @@ func (_m *Note) assignValues(columns []string, values []any) error {
 				_m.BookID = new(string)
 				*_m.BookID = value.String
 			}
-		case note.FieldChapterName:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field chapter_name", values[i])
-			} else if value.Valid {
-				_m.ChapterName = new(string)
-				*_m.ChapterName = value.String
-			}
 		case note.FieldAbstract:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field abstract", values[i])
 			} else if value.Valid {
 				_m.Abstract = new(string)
 				*_m.Abstract = value.String
-			}
-		case note.FieldReviewID:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field review_id", values[i])
-			} else if value.Valid {
-				_m.ReviewID = new(string)
-				*_m.ReviewID = value.String
 			}
 		case note.FieldScrapedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -187,6 +178,11 @@ func (_m *Note) String() string {
 	builder.WriteString("user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UserID))
 	builder.WriteString(", ")
+	if v := _m.PlatformID; v != nil {
+		builder.WriteString("platform_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
 	builder.WriteString("title=")
 	builder.WriteString(_m.Title)
 	builder.WriteString(", ")
@@ -215,18 +211,8 @@ func (_m *Note) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
-	if v := _m.ChapterName; v != nil {
-		builder.WriteString("chapter_name=")
-		builder.WriteString(*v)
-	}
-	builder.WriteString(", ")
 	if v := _m.Abstract; v != nil {
 		builder.WriteString("abstract=")
-		builder.WriteString(*v)
-	}
-	builder.WriteString(", ")
-	if v := _m.ReviewID; v != nil {
-		builder.WriteString("review_id=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")

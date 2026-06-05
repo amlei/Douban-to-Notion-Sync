@@ -62,15 +62,14 @@ export interface MovieItem {
 }
 
 export interface NoteItem {
+  platform_id?: number;
   title: string;
   url: string | null;
   date: string | null;
   location: string | null;
   body: string | null;
   book_id?: string;
-  chapter_name?: string;
   abstract?: string;
-  review_id?: string;
 }
 
 export interface BookmarkItem {

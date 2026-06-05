@@ -26,6 +26,20 @@ func (_c *NoteCreate) SetUserID(v int64) *NoteCreate {
 	return _c
 }
 
+// SetPlatformID sets the "platform_id" field.
+func (_c *NoteCreate) SetPlatformID(v int) *NoteCreate {
+	_c.mutation.SetPlatformID(v)
+	return _c
+}
+
+// SetNillablePlatformID sets the "platform_id" field if the given value is not nil.
+func (_c *NoteCreate) SetNillablePlatformID(v *int) *NoteCreate {
+	if v != nil {
+		_c.SetPlatformID(*v)
+	}
+	return _c
+}
+
 // SetTitle sets the "title" field.
 func (_c *NoteCreate) SetTitle(v string) *NoteCreate {
 	_c.mutation.SetTitle(v)
@@ -102,20 +116,6 @@ func (_c *NoteCreate) SetNillableBookID(v *string) *NoteCreate {
 	return _c
 }
 
-// SetChapterName sets the "chapter_name" field.
-func (_c *NoteCreate) SetChapterName(v string) *NoteCreate {
-	_c.mutation.SetChapterName(v)
-	return _c
-}
-
-// SetNillableChapterName sets the "chapter_name" field if the given value is not nil.
-func (_c *NoteCreate) SetNillableChapterName(v *string) *NoteCreate {
-	if v != nil {
-		_c.SetChapterName(*v)
-	}
-	return _c
-}
-
 // SetAbstract sets the "abstract" field.
 func (_c *NoteCreate) SetAbstract(v string) *NoteCreate {
 	_c.mutation.SetAbstract(v)
@@ -126,20 +126,6 @@ func (_c *NoteCreate) SetAbstract(v string) *NoteCreate {
 func (_c *NoteCreate) SetNillableAbstract(v *string) *NoteCreate {
 	if v != nil {
 		_c.SetAbstract(*v)
-	}
-	return _c
-}
-
-// SetReviewID sets the "review_id" field.
-func (_c *NoteCreate) SetReviewID(v string) *NoteCreate {
-	_c.mutation.SetReviewID(v)
-	return _c
-}
-
-// SetNillableReviewID sets the "review_id" field if the given value is not nil.
-func (_c *NoteCreate) SetNillableReviewID(v *string) *NoteCreate {
-	if v != nil {
-		_c.SetReviewID(*v)
 	}
 	return _c
 }
@@ -240,6 +226,10 @@ func (_c *NoteCreate) createSpec() (*Note, *sqlgraph.CreateSpec) {
 		_spec.SetField(note.FieldUserID, field.TypeInt64, value)
 		_node.UserID = value
 	}
+	if value, ok := _c.mutation.PlatformID(); ok {
+		_spec.SetField(note.FieldPlatformID, field.TypeInt, value)
+		_node.PlatformID = &value
+	}
 	if value, ok := _c.mutation.Title(); ok {
 		_spec.SetField(note.FieldTitle, field.TypeString, value)
 		_node.Title = value
@@ -264,17 +254,9 @@ func (_c *NoteCreate) createSpec() (*Note, *sqlgraph.CreateSpec) {
 		_spec.SetField(note.FieldBookID, field.TypeString, value)
 		_node.BookID = &value
 	}
-	if value, ok := _c.mutation.ChapterName(); ok {
-		_spec.SetField(note.FieldChapterName, field.TypeString, value)
-		_node.ChapterName = &value
-	}
 	if value, ok := _c.mutation.Abstract(); ok {
 		_spec.SetField(note.FieldAbstract, field.TypeString, value)
 		_node.Abstract = &value
-	}
-	if value, ok := _c.mutation.ReviewID(); ok {
-		_spec.SetField(note.FieldReviewID, field.TypeString, value)
-		_node.ReviewID = &value
 	}
 	if value, ok := _c.mutation.ScrapedAt(); ok {
 		_spec.SetField(note.FieldScrapedAt, field.TypeTime, value)

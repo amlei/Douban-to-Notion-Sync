@@ -33,6 +33,17 @@ type NoteInserter interface {
 	UpsertNotes(ctx context.Context, userID int64, items []map[string]any) (int, error)
 }
 
+// BookRatingUpdater is implemented by platform.DataRepo for updating book rating/status.
+type BookRatingUpdater interface {
+	UpdateWereadBookRatingStatus(ctx context.Context, userID int64, updates map[string]BookRatingUpdate) error
+}
+
+// BookRatingUpdate holds star/isFinish data aggregated from reviews for a single book.
+type BookRatingUpdate struct {
+	Star     int
+	IsFinish bool
+}
+
 // SyncWithAPI performs a full sync using the Skill API.
 func SyncWithAPI(
 	ctx context.Context,
@@ -40,6 +51,7 @@ func SyncWithAPI(
 	bookRepo BookInserter,
 	bookmarkRepo BookmarkInserter,
 	noteRepo NoteInserter,
+	ratingRepo BookRatingUpdater,
 	userID int64,
 	onProgress ProgressFunc,
 ) (result SyncResult, err error) {
@@ -77,13 +89,21 @@ func SyncWithAPI(
 	// Sync reviews/notes.
 	onProgress("reviews", 0, 0)
 	log.Printf("[weread-skill] syncing reviews…")
-	notes, err := syncReviews(ctx, client, shelf)
+	notes, ratingUpdates, err := syncReviews(ctx, client, shelf)
 	if err != nil {
 		log.Printf("[weread-skill] sync reviews error: %v", err)
-	} else if len(notes) > 0 {
-		log.Printf("[weread-skill] upserting %d notes…", len(notes))
-		noteRepo.UpsertNotes(ctx, userID, notes)
-		result.Notes = len(notes)
+	} else {
+		if len(notes) > 0 {
+			log.Printf("[weread-skill] upserting %d notes…", len(notes))
+			noteRepo.UpsertNotes(ctx, userID, notes)
+			result.Notes = len(notes)
+		}
+		if len(ratingUpdates) > 0 {
+			log.Printf("[weread-skill] updating rating/status for %d books…", len(ratingUpdates))
+			if err := ratingRepo.UpdateWereadBookRatingStatus(ctx, userID, ratingUpdates); err != nil {
+				log.Printf("[weread-skill] update book rating/status error: %v", err)
+			}
+		}
 	}
 	log.Printf("[weread-skill] reviews done: %d", result.Notes)
 
@@ -307,7 +327,8 @@ func syncBookmarks(ctx context.Context, client *SkillAPIClient, shelf *ShelfResp
 }
 
 // syncReviews fetches reviews for books that have them.
-func syncReviews(ctx context.Context, client *SkillAPIClient, shelf *ShelfResponse) ([]map[string]any, error) {
+// Returns note items and a map of bookID → {star, isFinish} aggregated from reviews.
+func syncReviews(ctx context.Context, client *SkillAPIClient, shelf *ShelfResponse) ([]map[string]any, map[string]BookRatingUpdate, error) {
 	// Build a title lookup from shelf.
 	titleMap := make(map[string]string, len(shelf.Books))
 	for _, sb := range shelf.Books {
@@ -317,7 +338,7 @@ func syncReviews(ctx context.Context, client *SkillAPIClient, shelf *ShelfRespon
 	// Fetch notebooks to find which books have reviews.
 	notebooks, err := client.FetchAllNotebooks(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Supplement title map from notebooks (covers books not on shelf).
@@ -338,14 +359,15 @@ func syncReviews(ctx context.Context, client *SkillAPIClient, shelf *ShelfRespon
 	}
 
 	if len(bookIDs) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	var (
-		mu    sync.Mutex
-		items []map[string]any
-		wg    sync.WaitGroup
-		sem   = make(chan struct{}, 3)
+		mu            sync.Mutex
+		items         []map[string]any
+		ratingUpdates map[string]BookRatingUpdate
+		wg            sync.WaitGroup
+		sem           = make(chan struct{}, 3)
 	)
 
 	for _, bookID := range bookIDs {
@@ -370,6 +392,8 @@ func syncReviews(ctx context.Context, client *SkillAPIClient, shelf *ShelfRespon
 			}
 
 			var batch []map[string]any
+			var lastStar int = -1
+			var hasFinish bool
 			for _, r := range reviews {
 				detail := r.Review
 				chapterName := detail.ChapterName
@@ -377,26 +401,37 @@ func syncReviews(ctx context.Context, client *SkillAPIClient, shelf *ShelfRespon
 					chapterName = fmt.Sprintf("Chapter %d", detail.ChapterIdx)
 				}
 				batch = append(batch, map[string]any{
-					"title":        fmt.Sprintf("%s - %s", bookTitle, chapterName),
-					"url":          fmt.Sprintf("weread://review/%s", r.ReviewID),
-					"date":         fmt.Sprintf("%d", detail.CreateTime),
-					"location":     chapterName,
-					"body":         detail.Content,
-					"book_id":      bookID,
-					"chapter_name": chapterName,
-					"abstract":     detail.Abstract,
-					"review_id":    r.ReviewID,
+					"title":    fmt.Sprintf("%s - %s", bookTitle, chapterName),
+					"url":      fmt.Sprintf("weread://review/%s", r.ReviewID),
+					"date":     fmt.Sprintf("%d", detail.CreateTime),
+					"location": chapterName,
+					"body":     detail.Content,
+					"book_id":  bookID,
+					"abstract": detail.Abstract,
 				})
+				// Aggregate star/isFinish: take the last valid star and any finish.
+				if detail.Star > 0 {
+					lastStar = detail.Star
+				}
+				if detail.IsFinish == 1 {
+					hasFinish = true
+				}
 			}
 
 			if len(batch) > 0 {
 				mu.Lock()
 				items = append(items, batch...)
+				if lastStar > 0 || hasFinish {
+					if ratingUpdates == nil {
+						ratingUpdates = make(map[string]BookRatingUpdate)
+					}
+					ratingUpdates[bookID] = BookRatingUpdate{Star: lastStar, IsFinish: hasFinish}
+				}
 				mu.Unlock()
 			}
 		}()
 	}
 	wg.Wait()
 
-	return items, nil
+	return items, ratingUpdates, nil
 }

@@ -16,15 +16,14 @@ func (Note) Fields() []ent.Field {
 			"postgres": "bigserial",
 		}).Positive(),
 		field.Int64("user_id"),
+		field.Int("platform_id").Optional().Nillable(),
 		field.String("title"),
 		field.String("url").Optional().Nillable(),
 		field.String("date").Optional().Nillable(),
 		field.String("location").Optional().Nillable(),
 		field.String("body").Optional().Nillable(),
 		field.String("book_id").Optional().Nillable(),
-		field.String("chapter_name").Optional().Nillable(),
 		field.String("abstract").Optional().Nillable(),
-		field.String("review_id").Optional().Nillable(),
 		field.Time("scraped_at"),
 	}
 }
@@ -36,6 +35,6 @@ func (Note) Edges() []ent.Edge {
 func (Note) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("user_id", "url").Unique(),
-		index.Fields("user_id", "book_id"),
+		index.Fields("user_id", "platform_id", "book_id"),
 	}
 }

@@ -58,16 +58,16 @@ func (r *WereadRepo) UpsertNotes(ctx context.Context, userID int64, items []map[
 	for _, item := range items {
 		title := fmt.Sprintf("%v", item["title"])
 		_, err := r.db.ExecContext(ctx, `
-			INSERT INTO notes (user_id, title, url, date, location, body, book_id, chapter_name, abstract, review_id, scraped_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			INSERT INTO notes (user_id, platform_id, title, url, date, location, body, book_id, abstract, scraped_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			ON CONFLICT (user_id, url) DO UPDATE SET
-				title = EXCLUDED.title, date = EXCLUDED.date, location = EXCLUDED.location, body = EXCLUDED.body,
-				book_id = EXCLUDED.book_id, chapter_name = EXCLUDED.chapter_name, abstract = EXCLUDED.abstract, review_id = EXCLUDED.review_id`,
-			userID, title,
+				platform_id = EXCLUDED.platform_id, title = EXCLUDED.title, date = EXCLUDED.date, location = EXCLUDED.location, body = EXCLUDED.body,
+				book_id = EXCLUDED.book_id, abstract = EXCLUDED.abstract`,
+			userID, PlatformWeread, title,
 			getStr(item, "url"), getStr(item, "date"),
 			getStr(item, "location"), getStr(item, "body"),
-			getStr(item, "book_id"), getStr(item, "chapter_name"),
-			getStr(item, "abstract"), getStr(item, "review_id"),
+			getStr(item, "book_id"),
+			getStr(item, "abstract"),
 			time.Now(),
 		)
 		if err != nil {

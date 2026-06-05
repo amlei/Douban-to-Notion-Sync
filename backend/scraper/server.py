@@ -167,11 +167,6 @@ async def sync(request: Request):
     existing_movie_urls = body.get("existing_movie_urls", [])
     bookmark_synckeys = body.get("bookmark_synckeys", {})
 
-    if platform == "douban":
-        return StreamingResponse(
-            _sync_douban(user_id, session_state_json, community_user_id, existing_book_urls, existing_movie_urls),
-            media_type="text/event-stream",
-        )
     if platform == "weread":
         return StreamingResponse(
             _sync_weread(user_id, session_state_json, community_user_id, bookmark_synckeys),
@@ -192,8 +187,6 @@ async def refresh(request: Request):
     platform = body.get("platform", "")
     session_state_json = body.get("session_state_json", "")
 
-    if platform == "douban":
-        return await _refresh_douban(session_state_json)
     if platform == "weread":
         return await _refresh_weread(session_state_json)
     if platform == "flomo":
@@ -304,81 +297,6 @@ def _bind_douban_subprocess(eq: mp.Queue, user_id: int, channel: str):
             client.__exit__(None, None, None)
         except Exception:
             pass
-
-
-def _sync_douban_subprocess(eq: mp.Queue, user_id, session_state_json, community_user_id, existing_book_urls, existing_movie_urls):
-    from community.douban.session import SessionManager
-    from community.douban.scrapers.books import BooksScraper
-    from community.douban.scrapers.movies import MoviesScraper
-
-    if not session_state_json:
-        eq.put(("error", {"error": "No session state"}))
-        return
-
-    try:
-        mgr = SessionManager(state_json=session_state_json)
-        http = mgr.build_http_session()
-        try:
-            eq.put(("progress", {"status": "scraping", "phase": "books"}))
-            books = BooksScraper(http, community_user_id).scrape(
-                max_pages=0,
-                existing_urls=set(existing_book_urls),
-            )
-
-            eq.put(("progress", {"status": "scraping", "phase": "movies"}))
-            movies = MoviesScraper(http, community_user_id).scrape(
-                max_pages=0,
-                existing_urls=set(existing_movie_urls),
-            )
-        finally:
-            http.close()
-
-        counts = {}
-        if books:
-            eq.put(("data", {"type": "book", "items": [b.model_dump() for b in books]}))
-            counts["books"] = len(books)
-        if movies:
-            eq.put(("data", {"type": "movie", "items": [m.model_dump() for m in movies]}))
-            counts["movies"] = len(movies)
-
-        eq.put(("done", {"counts": counts}))
-    except Exception as e:
-        log.exception("[sync/douban] Error in subprocess")
-        eq.put(("error", {"error": str(e)}))
-
-
-def _refresh_douban_subprocess(eq: mp.Queue, session_state_json: str):
-    from community.douban.session import SessionManager
-    from community.douban.scrapers.profile import ProfileScraper
-
-    try:
-        mgr = SessionManager(state_json=session_state_json)
-        http = mgr.build_http_session()
-        try:
-            import re
-            user_id = None
-            for cookie in http.cookies:
-                if cookie.name == "dbcl2":
-                    raw = cookie.value.split('"')[1] if '"' in cookie.value else ""
-                    user_id = raw.split(":")[0] if raw else ""
-                    break
-            if not user_id:
-                resp = http.get("https://www.douban.com/mine/")
-                match = re.search(r'douban\.com/people/([^/"]+)', resp.text)
-                if match:
-                    user_id = match.group(1)
-            if not user_id:
-                eq.put(("error", {"error": "Failed to get user_id"}))
-                return
-            profile = ProfileScraper(http, user_id).scrape()
-            eq.put(("result", {
-                "community_user_id": user_id,
-                "profile_json": profile.model_dump_json(),
-            }))
-        finally:
-            http.close()
-    except Exception as e:
-        eq.put(("error", {"error": str(e)}))
 
 
 # ---- WeRead subprocess functions (module-level for macOS spawn) ----
@@ -722,26 +640,6 @@ async def _bind_douban(user_id: int, channel: str):
 
     async for event in _drain_process_events(eq, p, task_id):
         yield event
-
-
-async def _sync_douban(user_id, session_state_json, community_user_id, existing_book_urls, existing_movie_urls):
-    if not session_state_json:
-        yield sse_event("error", {"error": "No session state"})
-        return
-
-    eq = mp.Queue()
-    p = mp.Process(
-        target=_sync_douban_subprocess,
-        args=(eq, user_id, session_state_json, community_user_id, existing_book_urls, existing_movie_urls),
-    )
-    p.start()
-
-    async for event in _drain_process_events(eq, p):
-        yield event
-
-
-async def _refresh_douban(session_state_json: str):
-    return await _run_subprocess_single(_refresh_douban_subprocess, (session_state_json,))
 
 
 # ---- WeRead async generators ----

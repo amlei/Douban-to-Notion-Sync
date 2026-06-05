@@ -196,15 +196,14 @@ var (
 	NotesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true, SchemaType: map[string]string{"postgres": "bigserial"}},
 		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "platform_id", Type: field.TypeInt, Nullable: true},
 		{Name: "title", Type: field.TypeString},
 		{Name: "url", Type: field.TypeString, Nullable: true},
 		{Name: "date", Type: field.TypeString, Nullable: true},
 		{Name: "location", Type: field.TypeString, Nullable: true},
 		{Name: "body", Type: field.TypeString, Nullable: true},
 		{Name: "book_id", Type: field.TypeString, Nullable: true},
-		{Name: "chapter_name", Type: field.TypeString, Nullable: true},
 		{Name: "abstract", Type: field.TypeString, Nullable: true},
-		{Name: "review_id", Type: field.TypeString, Nullable: true},
 		{Name: "scraped_at", Type: field.TypeTime},
 	}
 	// NotesTable holds the schema information for the "notes" table.
@@ -216,12 +215,12 @@ var (
 			{
 				Name:    "note_user_id_url",
 				Unique:  true,
-				Columns: []*schema.Column{NotesColumns[1], NotesColumns[3]},
+				Columns: []*schema.Column{NotesColumns[1], NotesColumns[4]},
 			},
 			{
-				Name:    "note_user_id_book_id",
+				Name:    "note_user_id_platform_id_book_id",
 				Unique:  false,
-				Columns: []*schema.Column{NotesColumns[1], NotesColumns[7]},
+				Columns: []*schema.Column{NotesColumns[1], NotesColumns[2], NotesColumns[8]},
 			},
 		},
 	}

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -14,6 +15,7 @@ import (
 	"github.com/lifeink-ai/backend/ent/conv"
 	"github.com/lifeink-ai/backend/ent/communitymeta"
 	"github.com/lifeink-ai/backend/pkg/community/pagination"
+	"github.com/lifeink-ai/backend/pkg/community/platform/weread"
 )
 
 type CommunityMetaRepo struct {
@@ -239,6 +241,40 @@ func (r *DataRepo) UpdateBookmarkSynckey(ctx context.Context, userID int64, book
 	return r.client.Book.UpdateOneID(b.ID).
 		SetExternal(extStr).
 		Exec(ctx)
+}
+
+// UpdateWereadBookRatingStatus updates books rating and status based on review data.
+func (r *DataRepo) UpdateWereadBookRatingStatus(ctx context.Context, userID int64, updates map[string]weread.BookRatingUpdate) error {
+	for bookID, u := range updates {
+		url := fmt.Sprintf("https://weread.qq.com/web/reader/%s", bookID)
+		var sets []string
+		var args []any
+		argIdx := 3
+
+		if u.Star > 0 {
+			sets = append(sets, fmt.Sprintf("rating = $%d", argIdx))
+			args = append(args, u.Star)
+			argIdx++
+		}
+		if u.IsFinish {
+			sets = append(sets, fmt.Sprintf("status = $%d", argIdx))
+			args = append(args, "done")
+			argIdx++
+		}
+		if len(sets) == 0 {
+			continue
+		}
+
+		args = append(args, url)
+		query := fmt.Sprintf("UPDATE books SET %s WHERE user_id = $1 AND platform_id = $2 AND url = $%d",
+			strings.Join(sets, ", "), argIdx)
+
+		_, err := r.db.ExecContext(ctx, query, append([]any{userID, PlatformWeread}, args...)...)
+		if err != nil {
+			return fmt.Errorf("update book rating/status for %s: %w", bookID, err)
+		}
+	}
+	return nil
 }
 
 func getStr(m map[string]any, key string) *string {

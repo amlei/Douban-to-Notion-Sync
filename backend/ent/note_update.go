@@ -49,6 +49,33 @@ func (_u *NoteUpdate) AddUserID(v int64) *NoteUpdate {
 	return _u
 }
 
+// SetPlatformID sets the "platform_id" field.
+func (_u *NoteUpdate) SetPlatformID(v int) *NoteUpdate {
+	_u.mutation.ResetPlatformID()
+	_u.mutation.SetPlatformID(v)
+	return _u
+}
+
+// SetNillablePlatformID sets the "platform_id" field if the given value is not nil.
+func (_u *NoteUpdate) SetNillablePlatformID(v *int) *NoteUpdate {
+	if v != nil {
+		_u.SetPlatformID(*v)
+	}
+	return _u
+}
+
+// AddPlatformID adds value to the "platform_id" field.
+func (_u *NoteUpdate) AddPlatformID(v int) *NoteUpdate {
+	_u.mutation.AddPlatformID(v)
+	return _u
+}
+
+// ClearPlatformID clears the value of the "platform_id" field.
+func (_u *NoteUpdate) ClearPlatformID() *NoteUpdate {
+	_u.mutation.ClearPlatformID()
+	return _u
+}
+
 // SetTitle sets the "title" field.
 func (_u *NoteUpdate) SetTitle(v string) *NoteUpdate {
 	_u.mutation.SetTitle(v)
@@ -163,26 +190,6 @@ func (_u *NoteUpdate) ClearBookID() *NoteUpdate {
 	return _u
 }
 
-// SetChapterName sets the "chapter_name" field.
-func (_u *NoteUpdate) SetChapterName(v string) *NoteUpdate {
-	_u.mutation.SetChapterName(v)
-	return _u
-}
-
-// SetNillableChapterName sets the "chapter_name" field if the given value is not nil.
-func (_u *NoteUpdate) SetNillableChapterName(v *string) *NoteUpdate {
-	if v != nil {
-		_u.SetChapterName(*v)
-	}
-	return _u
-}
-
-// ClearChapterName clears the value of the "chapter_name" field.
-func (_u *NoteUpdate) ClearChapterName() *NoteUpdate {
-	_u.mutation.ClearChapterName()
-	return _u
-}
-
 // SetAbstract sets the "abstract" field.
 func (_u *NoteUpdate) SetAbstract(v string) *NoteUpdate {
 	_u.mutation.SetAbstract(v)
@@ -200,26 +207,6 @@ func (_u *NoteUpdate) SetNillableAbstract(v *string) *NoteUpdate {
 // ClearAbstract clears the value of the "abstract" field.
 func (_u *NoteUpdate) ClearAbstract() *NoteUpdate {
 	_u.mutation.ClearAbstract()
-	return _u
-}
-
-// SetReviewID sets the "review_id" field.
-func (_u *NoteUpdate) SetReviewID(v string) *NoteUpdate {
-	_u.mutation.SetReviewID(v)
-	return _u
-}
-
-// SetNillableReviewID sets the "review_id" field if the given value is not nil.
-func (_u *NoteUpdate) SetNillableReviewID(v *string) *NoteUpdate {
-	if v != nil {
-		_u.SetReviewID(*v)
-	}
-	return _u
-}
-
-// ClearReviewID clears the value of the "review_id" field.
-func (_u *NoteUpdate) ClearReviewID() *NoteUpdate {
-	_u.mutation.ClearReviewID()
 	return _u
 }
 
@@ -284,6 +271,15 @@ func (_u *NoteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedUserID(); ok {
 		_spec.AddField(note.FieldUserID, field.TypeInt64, value)
 	}
+	if value, ok := _u.mutation.PlatformID(); ok {
+		_spec.SetField(note.FieldPlatformID, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPlatformID(); ok {
+		_spec.AddField(note.FieldPlatformID, field.TypeInt, value)
+	}
+	if _u.mutation.PlatformIDCleared() {
+		_spec.ClearField(note.FieldPlatformID, field.TypeInt)
+	}
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(note.FieldTitle, field.TypeString, value)
 	}
@@ -317,23 +313,11 @@ func (_u *NoteUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.BookIDCleared() {
 		_spec.ClearField(note.FieldBookID, field.TypeString)
 	}
-	if value, ok := _u.mutation.ChapterName(); ok {
-		_spec.SetField(note.FieldChapterName, field.TypeString, value)
-	}
-	if _u.mutation.ChapterNameCleared() {
-		_spec.ClearField(note.FieldChapterName, field.TypeString)
-	}
 	if value, ok := _u.mutation.Abstract(); ok {
 		_spec.SetField(note.FieldAbstract, field.TypeString, value)
 	}
 	if _u.mutation.AbstractCleared() {
 		_spec.ClearField(note.FieldAbstract, field.TypeString)
-	}
-	if value, ok := _u.mutation.ReviewID(); ok {
-		_spec.SetField(note.FieldReviewID, field.TypeString, value)
-	}
-	if _u.mutation.ReviewIDCleared() {
-		_spec.ClearField(note.FieldReviewID, field.TypeString)
 	}
 	if value, ok := _u.mutation.ScrapedAt(); ok {
 		_spec.SetField(note.FieldScrapedAt, field.TypeTime, value)
@@ -376,6 +360,33 @@ func (_u *NoteUpdateOne) SetNillableUserID(v *int64) *NoteUpdateOne {
 // AddUserID adds value to the "user_id" field.
 func (_u *NoteUpdateOne) AddUserID(v int64) *NoteUpdateOne {
 	_u.mutation.AddUserID(v)
+	return _u
+}
+
+// SetPlatformID sets the "platform_id" field.
+func (_u *NoteUpdateOne) SetPlatformID(v int) *NoteUpdateOne {
+	_u.mutation.ResetPlatformID()
+	_u.mutation.SetPlatformID(v)
+	return _u
+}
+
+// SetNillablePlatformID sets the "platform_id" field if the given value is not nil.
+func (_u *NoteUpdateOne) SetNillablePlatformID(v *int) *NoteUpdateOne {
+	if v != nil {
+		_u.SetPlatformID(*v)
+	}
+	return _u
+}
+
+// AddPlatformID adds value to the "platform_id" field.
+func (_u *NoteUpdateOne) AddPlatformID(v int) *NoteUpdateOne {
+	_u.mutation.AddPlatformID(v)
+	return _u
+}
+
+// ClearPlatformID clears the value of the "platform_id" field.
+func (_u *NoteUpdateOne) ClearPlatformID() *NoteUpdateOne {
+	_u.mutation.ClearPlatformID()
 	return _u
 }
 
@@ -493,26 +504,6 @@ func (_u *NoteUpdateOne) ClearBookID() *NoteUpdateOne {
 	return _u
 }
 
-// SetChapterName sets the "chapter_name" field.
-func (_u *NoteUpdateOne) SetChapterName(v string) *NoteUpdateOne {
-	_u.mutation.SetChapterName(v)
-	return _u
-}
-
-// SetNillableChapterName sets the "chapter_name" field if the given value is not nil.
-func (_u *NoteUpdateOne) SetNillableChapterName(v *string) *NoteUpdateOne {
-	if v != nil {
-		_u.SetChapterName(*v)
-	}
-	return _u
-}
-
-// ClearChapterName clears the value of the "chapter_name" field.
-func (_u *NoteUpdateOne) ClearChapterName() *NoteUpdateOne {
-	_u.mutation.ClearChapterName()
-	return _u
-}
-
 // SetAbstract sets the "abstract" field.
 func (_u *NoteUpdateOne) SetAbstract(v string) *NoteUpdateOne {
 	_u.mutation.SetAbstract(v)
@@ -530,26 +521,6 @@ func (_u *NoteUpdateOne) SetNillableAbstract(v *string) *NoteUpdateOne {
 // ClearAbstract clears the value of the "abstract" field.
 func (_u *NoteUpdateOne) ClearAbstract() *NoteUpdateOne {
 	_u.mutation.ClearAbstract()
-	return _u
-}
-
-// SetReviewID sets the "review_id" field.
-func (_u *NoteUpdateOne) SetReviewID(v string) *NoteUpdateOne {
-	_u.mutation.SetReviewID(v)
-	return _u
-}
-
-// SetNillableReviewID sets the "review_id" field if the given value is not nil.
-func (_u *NoteUpdateOne) SetNillableReviewID(v *string) *NoteUpdateOne {
-	if v != nil {
-		_u.SetReviewID(*v)
-	}
-	return _u
-}
-
-// ClearReviewID clears the value of the "review_id" field.
-func (_u *NoteUpdateOne) ClearReviewID() *NoteUpdateOne {
-	_u.mutation.ClearReviewID()
 	return _u
 }
 
@@ -644,6 +615,15 @@ func (_u *NoteUpdateOne) sqlSave(ctx context.Context) (_node *Note, err error) {
 	if value, ok := _u.mutation.AddedUserID(); ok {
 		_spec.AddField(note.FieldUserID, field.TypeInt64, value)
 	}
+	if value, ok := _u.mutation.PlatformID(); ok {
+		_spec.SetField(note.FieldPlatformID, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPlatformID(); ok {
+		_spec.AddField(note.FieldPlatformID, field.TypeInt, value)
+	}
+	if _u.mutation.PlatformIDCleared() {
+		_spec.ClearField(note.FieldPlatformID, field.TypeInt)
+	}
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(note.FieldTitle, field.TypeString, value)
 	}
@@ -677,23 +657,11 @@ func (_u *NoteUpdateOne) sqlSave(ctx context.Context) (_node *Note, err error) {
 	if _u.mutation.BookIDCleared() {
 		_spec.ClearField(note.FieldBookID, field.TypeString)
 	}
-	if value, ok := _u.mutation.ChapterName(); ok {
-		_spec.SetField(note.FieldChapterName, field.TypeString, value)
-	}
-	if _u.mutation.ChapterNameCleared() {
-		_spec.ClearField(note.FieldChapterName, field.TypeString)
-	}
 	if value, ok := _u.mutation.Abstract(); ok {
 		_spec.SetField(note.FieldAbstract, field.TypeString, value)
 	}
 	if _u.mutation.AbstractCleared() {
 		_spec.ClearField(note.FieldAbstract, field.TypeString)
-	}
-	if value, ok := _u.mutation.ReviewID(); ok {
-		_spec.SetField(note.FieldReviewID, field.TypeString, value)
-	}
-	if _u.mutation.ReviewIDCleared() {
-		_spec.ClearField(note.FieldReviewID, field.TypeString)
 	}
 	if value, ok := _u.mutation.ScrapedAt(); ok {
 		_spec.SetField(note.FieldScrapedAt, field.TypeTime, value)

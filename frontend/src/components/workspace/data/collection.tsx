@@ -495,6 +495,7 @@ export function Collection({ doubanBound, wereadBound, flomoBound, dataCounts }:
                   <span>{dateStr}</span>
                 </div>
                 {chapter && <span className="text-xs text-muted-foreground">{chapter}</span>}
+                {n.abstract && <p className="text-xs text-muted-foreground border-l-2 border-primary/30 pl-2 italic">{n.abstract}</p>}
                 {n.body && <p className="text-sm text-foreground leading-relaxed">{n.body}</p>}
               </div>
             );

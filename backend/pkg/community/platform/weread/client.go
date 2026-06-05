@@ -112,6 +112,8 @@ type ReviewDetail struct {
 	ChapterName string `json:"chapterName"`
 	ChapterIdx  int    `json:"chapterIdx"`
 	Abstract    string `json:"abstract"`
+	Star        int    `json:"star"`     // 用户评分 0-5，-1=无评分
+	IsFinish    int    `json:"isFinish"` // 是否读完 (1=读完)
 }
 
 // ReviewListResponse is the response from /review/list/mine.

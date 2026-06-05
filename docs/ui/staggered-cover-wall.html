@@ -1,0 +1,610 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>封面墙 · Cover Wall</title>
+  <style>
+    /* ─── Apple design system tokens ─────────────────────────────── */
+    :root {
+      --bg: #000000;
+      --surface: #f5f5f7;
+      --surface-warm: #fbfbfd;
+      --fg: #1d1d1f;
+      --fg-2: #424245;
+      --muted: #6e6e73;
+      --meta: #86868b;
+      --border: #d2d2d7;
+      --border-soft: #e8e8ed;
+      --accent: #0071e3;
+      --accent-on: #ffffff;
+      --accent-hover: #0077ed;
+      --accent-active: #0066cc;
+      --font-display: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --font-body: "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+      --text-xs: 12px;
+      --text-sm: 14px;
+      --text-base: 17px;
+      --text-lg: 21px;
+      --text-xl: 28px;
+      --text-2xl: 40px;
+      --text-3xl: 56px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --radius-pill: 980px;
+      --motion-fast: 150ms;
+      --motion-base: 220ms;
+      --ease-standard: cubic-bezier(0.28, 0, 0.22, 1);
+      --focus-ring: 0 0 0 4px color-mix(in oklab, var(--accent), transparent 65%);
+      --cover-gap: 4px;
+    }
+
+    /* ─── Reset ──────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ─── Grid container ─────────────────────────────────────────── */
+    #grid {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+    }
+    #grid::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.4) 100%);
+      pointer-events: none;
+      z-index: 5;
+    }
+    .grid-vertical {
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
+      gap: var(--cover-gap);
+      width: 100%; height: 100%;
+    }
+    .grid-horizontal {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--cover-gap);
+      width: 100%; height: 100%;
+    }
+
+    /* ─── Vertical tracks ────────────────────────────────────────── */
+    .v-col {
+      overflow: hidden;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .v-track {
+      will-change: transform;
+      display: flex;
+      flex-direction: column;
+    }
+    .v-track.paused { animation-play-state: paused !important; }
+
+    /* ─── Horizontal tracks ──────────────────────────────────────── */
+    .h-row {
+      overflow: hidden;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .h-track {
+      will-change: transform;
+      display: flex;
+      flex-direction: row;
+    }
+    .h-track.paused { animation-play-state: paused !important; }
+
+    /* ─── Cover card ─────────────────────────────────────────────── */
+    .cover {
+      flex-shrink: 0;
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+      cursor: pointer;
+      transition: transform 0.35s var(--ease-standard), box-shadow 0.35s var(--ease-standard);
+      contain: layout;
+    }
+    .cover:hover {
+      transform: scale(1.08);
+      z-index: 10;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.1);
+    }
+    .cover-inner {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 10px;
+      position: relative;
+      overflow: hidden;
+    }
+    .cover-inner::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 60%;
+      background: linear-gradient(to top, rgba(0,0,0,0.65), transparent);
+      pointer-events: none;
+    }
+    .cover-title {
+      position: relative;
+      z-index: 1;
+      color: #fff;
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.25;
+      letter-spacing: -0.01em;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .cover-author {
+      position: relative;
+      z-index: 1;
+      color: rgba(255,255,255,0.65);
+      font-size: 10px;
+      font-weight: 400;
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .cover-badge {
+      position: absolute;
+      top: 7px;
+      left: 7px;
+      z-index: 2;
+      font-family: var(--font-mono);
+      font-size: 8px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 2px 5px;
+      border-radius: 3px;
+      background: rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.75);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+    .cover-spine {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      background: rgba(255,255,255,0.08);
+      z-index: 2;
+    }
+
+    /* ─── Control panel ──────────────────────────────────────────── */
+    .controls {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 4px;
+      border-radius: var(--radius-pill);
+      background: color-mix(in oklab, #1d1d1f, transparent 15%);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      backdrop-filter: saturate(180%) blur(20px);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+    .ctrl-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      height: 36px;
+      padding: 0 14px;
+      border: none;
+      border-radius: var(--radius-pill);
+      background: transparent;
+      color: rgba(255,255,255,0.7);
+      font-family: var(--font-body);
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      cursor: pointer;
+      transition:
+        background var(--motion-fast) var(--ease-standard),
+        color var(--motion-fast) var(--ease-standard);
+      white-space: nowrap;
+    }
+    .ctrl-btn:hover {
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.9);
+    }
+    .ctrl-btn:active { transform: scale(0.96); }
+    .ctrl-btn.active {
+      background: rgba(255,255,255,0.14);
+      color: #fff;
+    }
+    .ctrl-divider {
+      width: 1px;
+      height: 20px;
+      background: rgba(255,255,255,0.1);
+      flex-shrink: 0;
+      margin: 0 4px;
+    }
+    .ctrl-btn svg {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+    }
+    .speed-group {
+      display: flex;
+      gap: 2px;
+    }
+    .speed-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border: none;
+      border-radius: 50%;
+      background: transparent;
+      color: rgba(255,255,255,0.45);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      transition:
+        background var(--motion-fast) var(--ease-standard),
+        color var(--motion-fast) var(--ease-standard);
+    }
+    .speed-btn:hover {
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.7);
+    }
+    .speed-btn.active {
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+    }
+
+    @media (max-width: 639px) {
+      .controls {
+        bottom: 16px;
+        padding: 3px;
+        gap: 1px;
+      }
+      .ctrl-btn {
+        height: 32px;
+        padding: 0 10px;
+        font-size: 12px;
+      }
+      .speed-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 9px;
+      }
+      .ctrl-label { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .v-track, .h-track { animation-duration: 0s !important; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="grid"></div>
+
+<!-- Control panel -->
+<div class="controls" id="controls">
+  <button class="ctrl-btn active" id="btnVertical" aria-label="纵向交错滚动">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 5v14M8 9l4-4 4 4"/>
+      <path d="M12 19v-4" opacity="0.4"/>
+    </svg>
+    <span class="ctrl-label">纵向</span>
+  </button>
+
+  <button class="ctrl-btn" id="btnHorizontal" aria-label="横向交错滚动">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 12h14M9 8l-4 4 4 4"/>
+      <path d="M19 12h-4" opacity="0.4"/>
+    </svg>
+    <span class="ctrl-label">横向</span>
+  </button>
+
+  <div class="ctrl-divider"></div>
+
+  <button class="ctrl-btn" id="btnPause" aria-label="暂停/继续">
+    <svg id="iconPause" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="7" y="5" width="4" height="14" rx="1"/>
+      <rect x="13" y="5" width="4" height="14" rx="1"/>
+    </svg>
+    <svg id="iconPlay" viewBox="0 0 24 24" fill="currentColor" style="display:none">
+      <path d="M8 5.14v13.72a1 1 0 001.5.86l11.04-6.86a1 1 0 000-1.72L9.5 4.28A1 1 0 008 5.14z"/>
+    </svg>
+  </button>
+
+  <div class="ctrl-divider"></div>
+
+  <div class="speed-group">
+    <button class="speed-btn" data-speed="0.5" aria-label="慢速">0.5</button>
+    <button class="speed-btn active" data-speed="1" aria-label="正常速度">1×</button>
+    <button class="speed-btn" data-speed="2" aria-label="快速">2×</button>
+  </div>
+</div>
+
+<script>
+/* ─── Cover data (books + movies) ─────────────────────────────── */
+const COVERS = [
+  { t:'百年孤独',    a:'马尔克斯',      type:'book',  c:['#1a4a3e','#2d7a5a'] },
+  { t:'活着',       a:'余华',         type:'book',  c:['#6b2030','#a04050'] },
+  { t:'三体',       a:'刘慈欣',        type:'book',  c:['#1a2a4a','#3050a0'] },
+  { t:'挪威的森林',   a:'村上春树',      type:'book',  c:['#2a4a3a','#508060'] },
+  { t:'小王子',      a:'圣-埃克苏佩里',   type:'book',  c:['#4a3a1a','#8a7030'] },
+  { t:'围城',       a:'钱锺书',        type:'book',  c:['#3a2040','#6a3070'] },
+  { t:'红楼梦',      a:'曹雪芹',        type:'book',  c:['#7a2020','#b04040'] },
+  { t:'平凡的世界',   a:'路遥',         type:'book',  c:['#4a3a20','#806830'] },
+  { t:'白夜行',      a:'东野圭吾',       type:'book',  c:['#203040','#405080'] },
+  { t:'人间失格',    a:'太宰治',        type:'book',  c:['#2a2030','#504060'] },
+  { t:'追风筝的人',   a:'胡赛尼',        type:'book',  c:['#3a4a20','#608030'] },
+  { t:'解忧杂货店',   a:'东野圭吾',       type:'book',  c:['#4a4030','#807050'] },
+  { t:'月亮与六便士',  a:'毛姆',         type:'book',  c:['#203a50','#406090'] },
+  { t:'局外人',      a:'加缪',         type:'book',  c:['#3a3020','#605040'] },
+  { t:'了不起的盖茨比', a:'菲茨杰拉德',     type:'book',  c:['#4a3a10','#8a7020'] },
+  { t:'1984',       a:'乔治·奥威尔',     type:'book',  c:['#2a2a2a','#504040'] },
+  { t:'沉默的大多数',   a:'王小波',        type:'book',  c:['#3a2a3a','#605060'] },
+  { t:'霍乱时期的爱情', a:'马尔克斯',      type:'book',  c:['#5a2a1a','#904830'] },
+  { t:'霸王别姬',    a:'陈凯歌',        type:'movie', c:['#5a1020','#902030'] },
+  { t:'千与千寻',    a:'宫崎骏',        type:'movie', c:['#1a3a5a','#3060a0'] },
+  { t:'肖申克的救赎',  a:'Frank Darabont',type:'movie', c:['#2a3020','#405030'] },
+  { t:'星际穿越',    a:'Christopher Nolan',type:'movie',c:['#0a1a2a','#1a3050'] },
+  { t:'花样年华',    a:'王家卫',        type:'movie', c:['#5a3a1a','#906030'] },
+  { t:'教父',       a:'Francis Coppola',type:'movie', c:['#1a1a1a','#3a3020'] },
+  { t:'盗梦空间',    a:'Christopher Nolan',type:'movie',c:['#1a2040','#304070'] },
+  { t:'重庆森林',    a:'王家卫',        type:'movie', c:['#4a2a3a','#704060'] },
+  { t:'天堂电影院',   a:'Giuseppe Tornatore',type:'movie',c:['#4a3a1a','#806020'] },
+  { t:'这个杀手不太冷', a:'Luc Besson',   type:'movie', c:['#2a3a2a','#406040'] },
+  { t:'龙猫',       a:'宫崎骏',        type:'movie', c:['#3a4a20','#608030'] },
+  { t:'海上钢琴师',   a:'Giuseppe Tornatore',type:'movie',c:['#1a2a3a','#304060'] },
+  { t:'寄生虫',      a:'奉俊昊',        type:'movie', c:['#3a2030','#604050'] },
+  { t:'楚门的世界',   a:'Peter Weir',    type:'movie', c:['#2a3a4a','#406080'] },
+  { t:'泰坦尼克号',   a:'James Cameron', type:'movie', c:['#1a2a40','#3050a0'] },
+  { t:'美丽人生',    a:'Roberto Benigni',type:'movie', c:['#3a3010','#605020'] },
+  { t:'触不可及',    a:'Olivier Nakache',type:'movie', c:['#2a2a40','#404070'] },
+  { t:'阿甘正传',    a:'Robert Zemeckis',type:'movie', c:['#3a2a1a','#604830'] },
+  { t:'放牛班的春天',  a:'Christophe Barratier',type:'movie',c:['#2a3a2a','#507040'] },
+  { t:'忠犬八公的故事',a:'Lasse Hallström',type:'movie', c:['#3a3030','#605050'] },
+];
+
+const state = { mode: 'vertical', speed: 1, paused: false };
+
+function calcLayout() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const gap = 4;
+  let cols;
+  if (vw >= 1440)      cols = 9;
+  else if (vw >= 1200) cols = 8;
+  else if (vw >= 1024) cols = 7;
+  else if (vw >= 768)  cols = 5;
+  else if (vw >= 480)  cols = 4;
+  else                 cols = 3;
+  const coverW = Math.floor((vw - gap * (cols - 1)) / cols);
+  const coverH = Math.floor(coverW * 1.45);
+  return { coverW, coverH, cols, gap };
+}
+
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return h;
+}
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function createCover(data, w, h, isVertical) {
+  const el = document.createElement('div');
+  el.className = 'cover';
+  el.style.width = w + 'px';
+  el.style.height = h + 'px';
+  if (isVertical) el.style.marginBottom = 'var(--cover-gap)';
+  else el.style.marginRight = '4px';
+
+  const angles = [125, 145, 160, 135, 150, 140, 155];
+  const angle = angles[Math.abs(hashStr(data.t)) % angles.length];
+  el.style.background = 'linear-gradient(' + angle + 'deg, ' + data.c[0] + ', ' + data.c[1] + ')';
+
+  const titleSize = Math.max(11, Math.round(w * 0.068));
+  const authorSize = Math.max(9, Math.round(w * 0.052));
+
+  const inner = document.createElement('div');
+  inner.className = 'cover-inner';
+
+  const deco = document.createElement('div');
+  deco.style.cssText = 'position:absolute;top:-20%;right:-15%;width:60%;height:50%;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,0.04),transparent 70%);pointer-events:none;';
+  inner.appendChild(deco);
+
+  const badge = document.createElement('span');
+  badge.className = 'cover-badge';
+  badge.textContent = data.type === 'book' ? '书' : '影';
+
+  if (data.type === 'book') {
+    const spine = document.createElement('div');
+    spine.className = 'cover-spine';
+    inner.appendChild(spine);
+  }
+
+  const title = document.createElement('div');
+  title.className = 'cover-title';
+  title.textContent = data.t;
+  title.style.fontSize = titleSize + 'px';
+
+  const author = document.createElement('div');
+  author.className = 'cover-author';
+  author.textContent = data.a;
+  author.style.fontSize = authorSize + 'px';
+
+  inner.appendChild(badge);
+  inner.appendChild(title);
+  inner.appendChild(author);
+  el.appendChild(inner);
+  return el;
+}
+
+function buildVertical() {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  grid.className = 'grid-vertical';
+  const { coverW, coverH, cols, gap } = calcLayout();
+  const vh = window.innerHeight;
+  const coversPerSet = Math.ceil((vh + coverH) / (coverH + gap)) + 2;
+  const totalCovers = coversPerSet * 2;
+
+  for (let c = 0; c < cols; c++) {
+    const col = document.createElement('div');
+    col.className = 'v-col';
+    col.style.width = coverW + 'px';
+    const track = document.createElement('div');
+    track.className = 'v-track';
+    track.dataset.col = c;
+    const pool = shuffle(COVERS);
+    for (let i = 0; i < totalCovers; i++) {
+      track.appendChild(createCover(pool[i % pool.length], coverW, coverH, true));
+    }
+    col.appendChild(track);
+    grid.appendChild(col);
+
+    const trackH = coversPerSet * (coverH + gap);
+    const dir = c % 2 === 0 ? 1 : -1;
+    const dur = trackH / (35 * state.speed);
+    const name = 'v' + c;
+    injectKF(name, dir === 1
+      ? 'from{transform:translateY(0)}to{transform:translateY(-' + trackH + 'px)}'
+      : 'from{transform:translateY(-' + trackH + 'px)}to{transform:translateY(0)}');
+    track.style.animation = name + ' ' + dur + 's linear infinite';
+    if (state.paused) track.classList.add('paused');
+  }
+}
+
+function buildHorizontal() {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  grid.className = 'grid-horizontal';
+  const { coverW, coverH, cols, gap } = calcLayout();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const rowCount = Math.ceil(vh / (coverH + gap)) + 1;
+  const coversPerSet = Math.ceil((vw + coverW) / (coverW + gap)) + 2;
+  const totalCovers = coversPerSet * 2;
+
+  for (let r = 0; r < rowCount; r++) {
+    const row = document.createElement('div');
+    row.className = 'h-row';
+    row.style.height = coverH + 'px';
+    const track = document.createElement('div');
+    track.className = 'h-track';
+    track.dataset.row = r;
+    const pool = shuffle(COVERS);
+    for (let i = 0; i < totalCovers; i++) {
+      track.appendChild(createCover(pool[i % pool.length], coverW, coverH, false));
+    }
+    row.appendChild(track);
+    grid.appendChild(row);
+
+    const trackW = coversPerSet * (coverW + gap);
+    const dir = r % 2 === 0 ? 1 : -1;
+    const dur = trackW / (40 * state.speed);
+    const name = 'h' + r;
+    injectKF(name, dir === 1
+      ? 'from{transform:translateX(0)}to{transform:translateX(-' + trackW + 'px)}'
+      : 'from{transform:translateX(-' + trackW + 'px)}to{transform:translateX(0)}');
+    track.style.animation = name + ' ' + dur + 's linear infinite';
+    if (state.paused) track.classList.add('paused');
+  }
+}
+
+function injectKF(name, body) {
+  let s = document.getElementById('dyn-kf');
+  if (!s) { s = document.createElement('style'); s.id = 'dyn-kf'; document.head.appendChild(s); }
+  s.textContent += '@keyframes ' + name + '{' + body + '}\n';
+}
+
+function build() {
+  const s = document.getElementById('dyn-kf');
+  if (s) s.textContent = '';
+  if (state.mode === 'vertical') buildVertical();
+  else buildHorizontal();
+}
+
+function togglePause() {
+  state.paused = !state.paused;
+  document.querySelectorAll('.v-track,.h-track').forEach(function(t) {
+    t.classList.toggle('paused', state.paused);
+  });
+  document.getElementById('iconPause').style.display = state.paused ? 'none' : '';
+  document.getElementById('iconPlay').style.display = state.paused ? '' : 'none';
+}
+
+document.getElementById('btnVertical').addEventListener('click', function() {
+  if (state.mode === 'vertical') return;
+  state.mode = 'vertical';
+  document.getElementById('btnVertical').classList.add('active');
+  document.getElementById('btnHorizontal').classList.remove('active');
+  build();
+});
+document.getElementById('btnHorizontal').addEventListener('click', function() {
+  if (state.mode === 'horizontal') return;
+  state.mode = 'horizontal';
+  document.getElementById('btnHorizontal').classList.add('active');
+  document.getElementById('btnVertical').classList.remove('active');
+  build();
+});
+document.getElementById('btnPause').addEventListener('click', togglePause);
+document.querySelectorAll('.speed-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.speed-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    state.speed = parseFloat(btn.dataset.speed);
+    build();
+  });
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); togglePause(); }
+  if (e.key === 'v' || e.key === 'V') document.getElementById('btnVertical').click();
+  if (e.key === 'h' || e.key === 'H') document.getElementById('btnHorizontal').click();
+});
+var resizeTimer;
+window.addEventListener('resize', function() {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(build, 200);
+});
+build();
+</script>
+</body>
+</html>
